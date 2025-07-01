@@ -452,6 +452,7 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
       <mesh position={[-1.5, -0.15, 0.1]} castShadow>
         <boxGeometry args={[0.35, 1.0, 0.6]} />
         <meshStandardMaterial 
+          map={metalTexture}
           color="#f5f5dc" 
           metalness={0.02}
           roughness={0.85}
@@ -811,6 +812,7 @@ const Scene: React.FC = () => {
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.7, 0]}>
         <planeGeometry args={[6, 4]} />
         <meshStandardMaterial 
+          map={woodTexture}
           color="#0a0a0a" 
           roughness={0.95}
           metalness={0.0}
