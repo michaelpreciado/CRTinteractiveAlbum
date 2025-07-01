@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-black text-white font-mono;
+    background: radial-gradient(ellipse at center, #000000 0%, #000000 100%);
+  }
+  
+  * {
+    @apply selection:bg-dodger-500 selection:text-white;
+  }
+}
+
+@layer utilities {
+  .glass-morphism {
+    @apply backdrop-blur-md bg-dodger-500/10 border border-dodger-400/20;
+    box-shadow: 0 8px 32px rgba(30, 144, 255, 0.1);
+  }
+  
+  .crt-scanlines {
+    background: linear-gradient(
+      transparent 50%,
+      rgba(30, 144, 255, 0.08) 50%
+    );
+    background-size: 100% 4px;
+  }
+
+  .dodger-glow {
+    box-shadow: 
+      0 0 20px rgba(30, 144, 255, 0.3),
+      0 0 40px rgba(30, 144, 255, 0.2),
+      inset 0 0 20px rgba(30, 144, 255, 0.1);
+  }
+
+  .text-glow {
+    text-shadow: 
+      0 0 5px rgba(30, 144, 255, 0.8),
+      0 0 10px rgba(30, 144, 255, 0.6),
+      0 0 15px rgba(30, 144, 255, 0.4);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-float,
+    .animate-pulse-glow {
+      @apply animate-none;
+    }
+  }
+} 
