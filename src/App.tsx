@@ -1,16 +1,23 @@
-import React, { Suspense } from 'react'
+import React, { Suspense, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Monitor, Code, Mail } from 'lucide-react'
+import { useProgress } from '@react-three/drei'
 import HeroScene from './HeroScene'
 import InfoCard from './InfoCard'
 
-const LoadingScreen: React.FC = () => (
+interface LoadingScreenProps {
+  progress: number
+}
+
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ progress }) => (
   <div className="fixed inset-0 bg-dark-ambient flex items-center justify-center z-50">
     <div className="text-center">
       <div className="animate-pulse-glow mb-4 dodger-glow">
         <Monitor size={48} className="mx-auto text-dodger-500" />
       </div>
-      <p className="text-dodger-400 font-mono text-lg text-glow">Loading CRT workstation...</p>
+      <p className="text-dodger-400 font-mono text-lg text-glow">
+        Loading CRT workstation... {Math.round(progress)}%
+      </p>
       <div className="mt-4 flex justify-center space-x-1">
         {[...Array(3)].map((_, i) => (
           <div
@@ -43,6 +50,16 @@ const Navbar: React.FC = () => (
 )
 
 const App: React.FC = () => {
+  const { progress } = useProgress()
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (progress >= 100) {
+      const timeout = setTimeout(() => setIsLoading(false), 300)
+      return () => clearTimeout(timeout)
+    }
+  }, [progress])
+
   const cardData = [
     {
       id: 'about',
@@ -66,40 +83,41 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-dark-ambient">
-      <Suspense fallback={<LoadingScreen />}>
-        <Navbar />
-        
-        <main role="main">
-          <section className="h-screen relative" aria-label="3D CRT Display">
+      {isLoading && <LoadingScreen progress={progress} />}
+      <Navbar />
+
+      <main role="main">
+        <section className="h-screen relative" aria-label="3D CRT Display">
+          <Suspense fallback={null}>
             <HeroScene />
-          </section>
+          </Suspense>
+        </section>
 
-          <section className="py-20 px-6 max-w-6xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ duration: 1 }}
-              viewport={{ once: true }}
-              className="grid md:grid-cols-3 gap-8"
-            >
-              {cardData.map((card, index) => (
-                <InfoCard
-                  key={card.id}
-                  title={card.title}
-                  icon={card.icon}
-                  content={card.content}
-                  delay={index * 0.2}
-                  id={card.id}
-                />
-              ))}
-            </motion.div>
-          </section>
-        </main>
+        <section className="py-20 px-6 max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ duration: 1 }}
+            viewport={{ once: true }}
+            className="grid md:grid-cols-3 gap-8"
+          >
+            {cardData.map((card, index) => (
+              <InfoCard
+                key={card.id}
+                title={card.title}
+                icon={card.icon}
+                content={card.content}
+                delay={index * 0.2}
+                id={card.id}
+              />
+            ))}
+          </motion.div>
+        </section>
+      </main>
 
-        <footer className="py-8 text-center text-gray-500" role="contentinfo">
-          <p>&copy; 2024 CRT Interactive Album. Crafted with modern web technologies.</p>
-        </footer>
-      </Suspense>
+      <footer className="py-8 text-center text-gray-500" role="contentinfo">
+        <p>&copy; 2024 CRT Interactive Album. Crafted with modern web technologies.</p>
+      </footer>
     </div>
   )
 }
