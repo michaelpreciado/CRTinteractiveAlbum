@@ -304,6 +304,7 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
           // Set up onload to trigger redraw when image loads
           img.onload = () => {
             texture.needsUpdate = true
+            updateCanvas()
           }
         }
         
