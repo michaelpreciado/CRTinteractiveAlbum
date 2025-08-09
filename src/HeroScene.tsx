@@ -83,6 +83,13 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
   const meshRef = useRef<THREE.Group>(null)
   const screenRef = useRef<THREE.Mesh>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
+
+  const fadeStartRef = useRef(Date.now())
+  const slidesBasePath = `${import.meta.env.BASE_URL}slides/`
+
+  useEffect(() => {
+    fadeStartRef.current = Date.now()
+  }, [currentSlide])
   
   // Film images data with actual image files
   const filmSlides = [
@@ -291,7 +298,7 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
           // Create and cache new image
           img = new Image()
           img.crossOrigin = 'anonymous'
-          img.src = `/slides/${currentFilm.imageFile}`
+          img.src = `${slidesBasePath}${currentFilm.imageFile}`
           imageCache.set(imageKey, img)
           
           // Set up onload to trigger redraw when image loads
@@ -367,7 +374,18 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
         ctx.font = '14px Arial'
         ctx.fillText('Add image to /public/slides/', canvas.width/2, canvas.height/2 + 10)
       }
-      
+
+      const fadeProgress = Math.min((Date.now() - fadeStartRef.current) / 1000, 1)
+      ctx.fillStyle = `rgba(0,0,0,${1 - fadeProgress})`
+      ctx.fillRect(frameX, frameY, frameWidth, frameHeight)
+
+      ctx.shadowColor = '#1E90FF'
+      ctx.shadowBlur = 15
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#1E90FF'
+      ctx.strokeRect(frameX - 10, frameY - 10, frameWidth + 20, frameHeight + 20)
+      ctx.shadowBlur = 0
+
       // Film information overlay with dodger blue glow
       ctx.shadowColor = '#1E90FF'
       ctx.shadowBlur = 4
