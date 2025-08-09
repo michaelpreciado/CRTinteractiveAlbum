@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Environment, useProgress, Html } from '@react-three/drei'
+import { OrbitControls, Environment, useProgress, Html, MeshReflectorMaterial } from '@react-three/drei'
 import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
@@ -228,9 +228,9 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
     return () => clearInterval(interval)
   }, [filmSlides.length])
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y += Math.sin(state.clock.elapsedTime * 0.3) * 0.001
+      meshRef.current.rotation.y += delta * 0.1
       meshRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.2) * 0.005
     }
   })
@@ -548,13 +548,17 @@ const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
       {/* Screen glass reflection - very subtle in darkness */}
       <mesh position={[0, 0.1, 0.23]}>
         <planeGeometry args={[0.9, 0.68]} />
-        <meshStandardMaterial 
+        <meshPhysicalMaterial
           color="#1E90FF"
           transparent
-          opacity={0.03}
-          metalness={0.95}
+          opacity={0.05}
           roughness={0.05}
-          envMapIntensity={0.1}
+          metalness={0}
+          transmission={0.9}
+          reflectivity={0.8}
+          clearcoat={1}
+          clearcoatRoughness={0.2}
+          envMapIntensity={0.4}
         />
       </mesh>
       
@@ -811,11 +815,18 @@ const Scene: React.FC = () => {
       {/* Barely visible desk surface - only lit by screen glow */}
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.7, 0]}>
         <planeGeometry args={[6, 4]} />
-        <meshStandardMaterial 
+        <MeshReflectorMaterial
           map={woodTexture}
-          color="#0a0a0a" 
-          roughness={0.95}
-          metalness={0.0}
+          color="#0a0a0a"
+          metalness={0.2}
+          roughness={0.7}
+          mirror={0.3}
+          mixStrength={5}
+          blur={[200, 100]}
+          mixBlur={1}
+          depthScale={0.01}
+          minDepthThreshold={0.4}
+          maxDepthThreshold={1.4}
         />
       </mesh>
       

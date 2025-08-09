@@ -54,7 +54,7 @@ const App: React.FC = () => {
       id: 'tech',
       title: 'Tech Stack',
       icon: <Code className="w-6 h-6" />,
-      content: 'React 18, TypeScript, Three.js, React Three Fiber, Tailwind CSS, Framer Motion, and modern WebGL techniques for immersive 3D experiences.',
+      content: 'React 18, TypeScript, Three.js, React Three Fiber, Tailwind CSS, Framer Motion, and modern WebGL with dynamic lighting and reflections for immersive 3D experiences.',
     },
     {
       id: 'contact',
