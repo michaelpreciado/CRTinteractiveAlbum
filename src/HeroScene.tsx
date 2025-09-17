@@ -1,931 +1,487 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Environment, useProgress, Html, MeshReflectorMaterial } from '@react-three/drei'
-import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing'
-import { ToneMappingMode } from 'postprocessing'
+import React, { useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { ContactShadows, OrbitControls, Text, useCursor } from '@react-three/drei'
 import * as THREE from 'three'
 
-interface CRTComputerProps {
-  position?: [number, number, number]
+export type FolderId = 'media' | 'videos'
+
+interface HeroSceneProps {
+  openFolder: FolderId | null
+  setOpenFolder: React.Dispatch<React.SetStateAction<FolderId | null>>
 }
 
-const FilmStrip: React.FC = () => {
-  const filmRef = useRef<THREE.Group>(null)
-  const perforationsRef = useRef<THREE.Group>(null)
-  
-  useFrame((state) => {
-    if (filmRef.current) {
-      filmRef.current.rotation.y = state.clock.elapsedTime * 0.2
-    }
-    if (perforationsRef.current) {
-      perforationsRef.current.rotation.y = state.clock.elapsedTime * 0.15
-    }
-  })
-  
+interface ScreenSurfaceProps {
+  openFolder: FolderId | null
+  setOpenFolder: React.Dispatch<React.SetStateAction<FolderId | null>>
+}
+
+interface FolderIconProps {
+  id: FolderId
+  label: string
+  position: [number, number, number]
+  onOpen: (folder: FolderId) => void
+  isActive: boolean
+}
+
+interface FolderWindowProps {
+  folder: FolderId
+  onClose: () => void
+}
+
+const SCREEN_WIDTH = 0.68
+const SCREEN_HEIGHT = 0.46
+const FOLDER_DETAILS: Record<FolderId, { title: string; description: string; items: string[] }> = {
+  media: {
+    title: 'Media Assets',
+    description: 'Retouched stills, logo lockups, and layered compositions ready for export.',
+    items: ['Photoshoot_1997.zip', 'CRT_branding.ai', 'Ambient_loop.wav'],
+  },
+  videos: {
+    title: 'Video Library',
+    description: 'Retro cuts, VHS rips, and timeline exports for the interactive album.',
+    items: ['Intro_sequence.mov', 'Behind_the_scenes.mp4', 'CRT_glitches.webm'],
+  },
+}
+
+const createWallpaperTexture = () => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 768
+  const ctx = canvas.getContext('2d')!
+
+  const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+  skyGradient.addColorStop(0, '#88c8ff')
+  skyGradient.addColorStop(0.55, '#76b2ff')
+  skyGradient.addColorStop(0.65, '#60a5ff')
+  ctx.fillStyle = skyGradient
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  const sunX = canvas.width * 0.78
+  const sunY = canvas.height * 0.25
+  const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, canvas.height * 0.22)
+  sunGradient.addColorStop(0, 'rgba(255, 255, 230, 0.8)')
+  sunGradient.addColorStop(0.4, 'rgba(255, 255, 200, 0.4)')
+  sunGradient.addColorStop(1, 'rgba(255, 255, 200, 0)')
+  ctx.fillStyle = sunGradient
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  const distantHill = new Path2D()
+  distantHill.moveTo(0, canvas.height * 0.62)
+  distantHill.bezierCurveTo(
+    canvas.width * 0.2,
+    canvas.height * 0.45,
+    canvas.width * 0.48,
+    canvas.height * 0.68,
+    canvas.width * 0.72,
+    canvas.height * 0.55,
+  )
+  distantHill.bezierCurveTo(
+    canvas.width * 0.88,
+    canvas.height * 0.48,
+    canvas.width * 0.95,
+    canvas.height * 0.58,
+    canvas.width,
+    canvas.height * 0.56,
+  )
+  distantHill.lineTo(canvas.width, canvas.height)
+  distantHill.lineTo(0, canvas.height)
+  distantHill.closePath()
+  ctx.fillStyle = '#3aa63f'
+  ctx.fill(distantHill)
+
+  const foregroundHill = new Path2D()
+  foregroundHill.moveTo(0, canvas.height * 0.68)
+  foregroundHill.bezierCurveTo(
+    canvas.width * 0.18,
+    canvas.height * 0.58,
+    canvas.width * 0.38,
+    canvas.height * 0.76,
+    canvas.width * 0.62,
+    canvas.height * 0.66,
+  )
+  foregroundHill.bezierCurveTo(
+    canvas.width * 0.82,
+    canvas.height * 0.6,
+    canvas.width * 0.92,
+    canvas.height * 0.7,
+    canvas.width,
+    canvas.height * 0.66,
+  )
+  foregroundHill.lineTo(canvas.width, canvas.height)
+  foregroundHill.lineTo(0, canvas.height)
+  foregroundHill.closePath()
+  ctx.fillStyle = '#2c8b35'
+  ctx.fill(foregroundHill)
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+  ctx.beginPath()
+  ctx.ellipse(canvas.width * 0.25, canvas.height * 0.58, canvas.width * 0.18, canvas.height * 0.08, -0.4, 0, Math.PI * 2)
+  ctx.fill()
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  return texture
+}
+
+const createScanlineTexture = () => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 2
+  canvas.height = 4
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = 'rgba(134, 184, 255, 0.22)'
+  ctx.fillRect(0, 0, canvas.width, 1)
+  ctx.fillStyle = 'rgba(6, 20, 36, 0.8)'
+  ctx.fillRect(0, 1, canvas.width, 3)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(320, 180)
+  texture.magFilter = THREE.LinearFilter
+  return texture
+}
+
+const createWoodTexture = () => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 1024
+  const ctx = canvas.getContext('2d')!
+
+  const baseGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+  baseGradient.addColorStop(0, '#3b2416')
+  baseGradient.addColorStop(1, '#24140b')
+  ctx.fillStyle = baseGradient
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  for (let i = 0; i < 260; i++) {
+    const y = Math.random() * canvas.height
+    const alpha = 0.1 + Math.random() * 0.15
+    const width = 1 + Math.random() * 6
+    ctx.strokeStyle = `rgba(94, 58, 33, ${alpha})`
+    ctx.lineWidth = width
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.bezierCurveTo(
+      canvas.width * 0.25,
+      y + Math.sin(y * 0.01) * 15,
+      canvas.width * 0.5,
+      y + Math.cos(y * 0.005) * 20,
+      canvas.width,
+      y + Math.sin(y * 0.008) * 18,
+    )
+    ctx.stroke()
+  }
+
+  for (let i = 0; i < 28; i++) {
+    const x = Math.random() * canvas.width
+    const y = Math.random() * canvas.height
+    const radius = 30 + Math.random() * 60
+    const knotGradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
+    knotGradient.addColorStop(0, 'rgba(60, 34, 16, 0.6)')
+    knotGradient.addColorStop(1, 'rgba(60, 34, 16, 0)')
+    ctx.fillStyle = knotGradient
+    ctx.beginPath()
+    ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(1.5, 1.5)
+  texture.anisotropy = 4
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+const FolderIcon: React.FC<FolderIconProps> = ({ id, label, position, onOpen, isActive }) => {
+  const [hovered, setHovered] = useState(false)
+  useCursor(hovered, 'pointer')
+  const topColor = isActive || hovered ? '#fbe08a' : '#f2d278'
+  const bodyColor = isActive || hovered ? '#f7cc66' : '#e6be5b'
+
   return (
-    <group position={[0, 1.8, 0]}>
-      {/* Film reel container */}
+    <group
+      position={position}
+      onPointerOver={(event) => {
+        event.stopPropagation()
+        setHovered(true)
+      }}
+      onPointerOut={() => setHovered(false)}
+      onClick={(event) => {
+        event.stopPropagation()
+        onOpen(id)
+      }}
+    >
+      <mesh position={[0, 0.03, -0.005]} scale={[1, 1, 0.6]}>
+        <boxGeometry args={[0.07, 0.018, 0.03]} />
+        <meshStandardMaterial color={topColor} metalness={0.1} roughness={0.35} />
+      </mesh>
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[0.08, 0.06, 0.03]} />
+        <meshStandardMaterial color={bodyColor} metalness={0.1} roughness={0.4} />
+      </mesh>
+      <Text
+        position={[0, -0.055, 0]}
+        fontSize={0.034}
+        anchorX="center"
+        anchorY="middle"
+        color={isActive || hovered ? '#d6ecff' : '#ffffff'}
+        outlineWidth={0.002}
+        outlineColor="rgba(0,0,0,0.7)"
+      >
+        {label}
+      </Text>
+    </group>
+  )
+}
+
+const FolderWindow: React.FC<FolderWindowProps> = ({ folder, onClose }) => {
+  const { title, description, items } = FOLDER_DETAILS[folder]
+  const [hoveredClose, setHoveredClose] = useState(false)
+  useCursor(hoveredClose, 'pointer')
+
+  return (
+    <group
+      position={[0.1, -0.02, 0.02]}
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerOver={(event) => event.stopPropagation()}
+    >
+      <mesh position={[0.01, -0.01, -0.002]}>
+        <planeGeometry args={[0.5, 0.34]} />
+        <meshBasicMaterial color="#0c1928" transparent opacity={0.55} />
+      </mesh>
       <mesh>
-        <cylinderGeometry args={[0.8, 0.8, 0.15, 32]} />
-        <meshStandardMaterial 
-          color="#1a3344" 
-          metalness={0.3}
-          roughness={0.4}
-          transparent
-          opacity={0.7}
-        />
+        <planeGeometry args={[0.48, 0.32]} />
+        <meshStandardMaterial color="#f3f3f3" roughness={0.85} metalness={0.05} />
       </mesh>
-      
-      {/* Film strip with frames - simplified */}
-      <group ref={filmRef}>
-        {Array.from({ length: 12 }, (_, i) => {
-          const angle = (i / 12) * Math.PI * 2
-          const x = Math.cos(angle) * 0.75
-          const z = Math.sin(angle) * 0.75
-          return (
-            <mesh key={i} position={[x, 0, z]} rotation={[0, angle + Math.PI/2, 0]}>
-              <planeGeometry args={[0.1, 0.07]} />
-              <meshStandardMaterial 
-                color={i % 2 === 0 ? "#003366" : "#002244"}
-                emissive={new THREE.Color(0x001133)}
-                emissiveIntensity={0.1}
-                transparent
-                opacity={0.3}
-              />
-            </mesh>
-          )
-        })}
+      <mesh position={[0, 0.13, 0.001]}> 
+        <planeGeometry args={[0.48, 0.06]} />
+        <meshStandardMaterial color="#2b63d7" emissive="#224aa6" emissiveIntensity={0.6} roughness={0.4} />
+      </mesh>
+      <Text position={[-0.21, 0.13, 0.01]} fontSize={0.035} anchorX="left" anchorY="middle" color="#ffffff">
+        {title}
+      </Text>
+      <group position={[0.205, 0.13, 0.015]}>
+        <mesh
+          onPointerOver={(event) => {
+            event.stopPropagation()
+            setHoveredClose(true)
+          }}
+          onPointerOut={() => setHoveredClose(false)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onClose()
+          }}
+        >
+          <boxGeometry args={[0.05, 0.05, 0.008]} />
+          <meshStandardMaterial
+            color={hoveredClose ? '#f07b6f' : '#d95f54'}
+            emissive="#822320"
+            emissiveIntensity={hoveredClose ? 0.7 : 0.5}
+            roughness={0.5}
+          />
+        </mesh>
+        <Text
+          position={[0, 0, 0.01]}
+          fontSize={0.03}
+          anchorX="center"
+          anchorY="middle"
+          color="#ffffff"
+        >
+          ✕
+        </Text>
       </group>
-      
-      {/* Film perforations - simplified */}
-      <group ref={perforationsRef}>
-        {Array.from({ length: 24 }, (_, i) => {
-          const angle = (i / 24) * Math.PI * 2
-          const x = Math.cos(angle) * 0.82
-          const z = Math.sin(angle) * 0.82
-          return (
-            <mesh key={i} position={[x, 0, z]}>
-              <boxGeometry args={[0.015, 0.015, 0.015]} />
-              <meshStandardMaterial 
-                color="#001122"
-                emissive={new THREE.Color(0x003366)}
-                emissiveIntensity={0.1}
-              />
-            </mesh>
-          )
-        })}
-      </group>
+      <Text
+        position={[-0.21, 0.05, 0.01]}
+        fontSize={0.028}
+        anchorX="left"
+        anchorY="top"
+        color="#1a2e42"
+        maxWidth={0.4}
+        lineHeight={1.3}
+      >
+        {description}
+      </Text>
+      {items.map((item, index) => (
+        <Text
+          key={item}
+          position={[-0.21, -0.02 - index * 0.055, 0.01]}
+          fontSize={0.03}
+          anchorX="left"
+          anchorY="middle"
+          color="#1a2e42"
+        >
+          • {item}
+        </Text>
+      ))}
     </group>
   )
 }
 
-const CRTComputer: React.FC<CRTComputerProps> = ({ position = [0, 0, 0] }) => {
-  const meshRef = useRef<THREE.Group>(null)
-  const screenRef = useRef<THREE.Mesh>(null)
-  const [currentSlide, setCurrentSlide] = useState(0)
+const ScreenSurface: React.FC<ScreenSurfaceProps> = ({ openFolder, setOpenFolder }) => {
+  const wallpaperTexture = useMemo(createWallpaperTexture, [])
+  const scanlineTexture = useMemo(createScanlineTexture, [])
+  const screenMaterial = useRef<THREE.MeshStandardMaterial>(null)
+  const overlayMaterial = useRef<THREE.MeshBasicMaterial>(null)
 
-  const fadeStartRef = useRef(Date.now())
-  const slidesBasePath = `${import.meta.env.BASE_URL}slides/`
-
-  useEffect(() => {
-    fadeStartRef.current = Date.now()
-  }, [currentSlide])
-  
-  // Film images data with actual image files
-  const filmSlides = [
-    {
-      title: "FILM FRAME 001",
-      description: "Scene: Opening sequence",
-      timestamp: "00:01:23",
-      type: "WIDE SHOT",
-      imageFile: "Frame001.jpg"
-    },
-    {
-      title: "FILM FRAME 002", 
-      description: "Scene: Character introduction",
-      timestamp: "00:03:45",
-      type: "CLOSE-UP",
-      imageFile: "Frame002.jpg"
-    },
-    {
-      title: "FILM FRAME 003",
-      description: "Scene: Action sequence",
-      timestamp: "00:07:12",
-      type: "MEDIUM SHOT",
-      imageFile: "Frame003.jpg"
-    },
-    {
-      title: "FILM FRAME 004",
-      description: "Scene: Dialogue exchange",
-      timestamp: "00:12:08",
-      type: "TWO SHOT",
-      imageFile: "Frame004.jpg"
-    },
-    {
-      title: "FILM FRAME 005",
-      description: "Scene: Climactic moment",
-      timestamp: "00:18:34",
-      type: "EXTREME CLOSE-UP",
-      imageFile: "Frame005.jpg"
-    },
-    {
-      title: "FILM FRAME 006",
-      description: "Scene: Establishing shot",
-      timestamp: "00:22:15",
-      type: "WIDE SHOT",
-      imageFile: "Frame006.jpg"
-    },
-    {
-      title: "FILM FRAME 007",
-      description: "Scene: Dramatic reveal",
-      timestamp: "00:26:42",
-      type: "MEDIUM SHOT",
-      imageFile: "Frame007.jpg"
-    },
-    {
-      title: "FILM FRAME 008",
-      description: "Scene: Emotional exchange",
-      timestamp: "00:31:08",
-      type: "CLOSE-UP",
-      imageFile: "Frame008.jpg"
-    },
-    {
-      title: "FILM FRAME 009",
-      description: "Scene: Chase sequence",
-      timestamp: "00:35:29",
-      type: "TRACKING SHOT",
-      imageFile: "Frame009.jpg"
-    },
-    {
-      title: "FILM FRAME 010",
-      description: "Scene: Quiet reflection",
-      timestamp: "00:40:17",
-      type: "MEDIUM SHOT",
-      imageFile: "Frame010.jpg"
-    },
-    {
-      title: "FILM FRAME 011",
-      description: "Scene: Group conversation",
-      timestamp: "00:44:33",
-      type: "GROUP SHOT",
-      imageFile: "Frame011.jpg"
-    },
-    {
-      title: "FILM FRAME 012",
-      description: "Scene: Plot twist",
-      timestamp: "00:48:55",
-      type: "EXTREME CLOSE-UP",
-      imageFile: "Frame012.jpg"
-    },
-    {
-      title: "FILM FRAME 013",
-      description: "Scene: Outdoor setting",
-      timestamp: "00:52:41",
-      type: "WIDE SHOT",
-      imageFile: "Frame013.jpg"
-    },
-    {
-      title: "FILM FRAME 014",
-      description: "Scene: Intimate moment",
-      timestamp: "00:57:18",
-      type: "TWO SHOT",
-      imageFile: "Frame014.jpg"
-    },
-    {
-      title: "FILM FRAME 015",
-      description: "Scene: Confrontation",
-      timestamp: "01:02:44",
-      type: "MEDIUM SHOT",
-      imageFile: "Frame015.jpg"
-    },
-    {
-      title: "FILM FRAME 016",
-      description: "Scene: Resolution begins",
-      timestamp: "01:08:12",
-      type: "CLOSE-UP",
-      imageFile: "Frame016.jpg"
-    },
-    {
-      title: "FILM FRAME 017",
-      description: "Scene: Final battle",
-      timestamp: "01:13:37",
-      type: "WIDE SHOT",
-      imageFile: "Frame017.jpg"
-    },
-    {
-      title: "FILM FRAME 018",
-      description: "Scene: Victory moment",
-      timestamp: "01:18:24",
-      type: "MEDIUM SHOT",
-      imageFile: "Frame018.jpg"
-    },
-    {
-      title: "FILM FRAME 019",
-      description: "Scene: Closing credits",
-      timestamp: "01:22:58",
-      type: "FADE OUT",
-      imageFile: "Frame019.jpg"
+  useFrame(({ clock }) => {
+    if (screenMaterial.current) {
+      const flicker = 0.82 + Math.sin(clock.elapsedTime * 2.4) * 0.05
+      screenMaterial.current.emissiveIntensity = flicker
     }
-  ]
-  
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % filmSlides.length)
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [filmSlides.length])
-
-  useFrame((state, delta) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += delta * 0.1
-      meshRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.2) * 0.005
+    if (overlayMaterial.current) {
+      overlayMaterial.current.opacity = 0.18 + Math.sin(clock.elapsedTime * 9) * 0.03
     }
   })
 
-  // Enhanced CRT screen texture with realistic phosphor effect
-  const canvasTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 640
-    canvas.height = 480
-    const ctx = canvas.getContext('2d')!
-    
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.minFilter = THREE.LinearFilter
-    texture.magFilter = THREE.LinearFilter
-    
-    // Image cache for loaded images
-    const imageCache = new Map<string, HTMLImageElement>()
-    
-    const updateCanvas = () => {
-      // Deep black background with slight blue tint
-      const gradient = ctx.createRadialGradient(
-        canvas.width/2, canvas.height/2, 0,
-        canvas.width/2, canvas.height/2, canvas.width/2
-      )
-      gradient.addColorStop(0, '#001122')
-      gradient.addColorStop(1, '#000000')
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      // Add CRT curvature darkening at edges
-      const vignetteGradient = ctx.createRadialGradient(
-        canvas.width/2, canvas.height/2, canvas.width * 0.3,
-        canvas.width/2, canvas.height/2, canvas.width * 0.6
-      )
-      vignetteGradient.addColorStop(0, 'rgba(0,0,0,0)')
-      vignetteGradient.addColorStop(1, 'rgba(0,0,0,0.4)')
-      ctx.fillStyle = vignetteGradient
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      const currentFilm = filmSlides[currentSlide]
-      
-      // Create film frame with border
-      const frameX = 60
-      const frameY = 80
-      const frameWidth = canvas.width - 120
-      const frameHeight = canvas.height - 160
-      
-      // Film frame border (simulating photo paper)
-      ctx.fillStyle = '#f0f0f0'
-      ctx.fillRect(frameX - 10, frameY - 10, frameWidth + 20, frameHeight + 20)
-      
-      // Load and display actual image if available
-      if (currentFilm.imageFile) {
-        const imageKey = currentFilm.imageFile
-        let img = imageCache.get(imageKey)
-        
-        if (!img) {
-          // Create and cache new image
-          img = new Image()
-          img.crossOrigin = 'anonymous'
-          img.src = `${slidesBasePath}${currentFilm.imageFile}`
-          imageCache.set(imageKey, img)
-          
-          // Set up onload to trigger redraw when image loads
-          img.onload = () => {
-            texture.needsUpdate = true
-            updateCanvas()
-          }
-        }
-        
-        // Draw image if loaded, otherwise show loading state
-        if (img.complete && img.naturalWidth > 0) {
-          // Calculate aspect ratio to fit image in frame
-          const imgAspect = img.naturalWidth / img.naturalHeight
-          const frameAspect = frameWidth / frameHeight
-          
-          let drawWidth = frameWidth
-          let drawHeight = frameHeight
-          let drawX = frameX
-          let drawY = frameY
-          
-          if (imgAspect > frameAspect) {
-            // Image is wider - fit to frame width
-            drawHeight = frameWidth / imgAspect
-            drawY = frameY + (frameHeight - drawHeight) / 2
-          } else {
-            // Image is taller - fit to frame height
-            drawWidth = frameHeight * imgAspect
-            drawX = frameX + (frameWidth - drawWidth) / 2
-          }
-          
-          // Draw the actual image
-          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
-        } else {
-          // Loading state
-          ctx.fillStyle = '#2a2a2a'
-          ctx.fillRect(frameX, frameY, frameWidth, frameHeight)
-          ctx.fillStyle = '#888888'
-          ctx.font = 'bold 20px Arial'
-          ctx.textAlign = 'center'
-          ctx.fillText('LOADING IMAGE...', canvas.width/2, canvas.height/2)
-        }
-      } else {
-        // Placeholder for when no image is available
-        const imageGradient = ctx.createLinearGradient(frameX, frameY, frameX + frameWidth, frameY + frameHeight)
-        imageGradient.addColorStop(0, '#2a2a2a')
-        imageGradient.addColorStop(0.5, '#404040')
-        imageGradient.addColorStop(1, '#1a1a1a')
-        ctx.fillStyle = imageGradient
-        ctx.fillRect(frameX, frameY, frameWidth, frameHeight)
-        
-        // Add placeholder pattern
-        ctx.strokeStyle = '#666666'
-        ctx.lineWidth = 1
-        for (let i = 0; i < 10; i++) {
-          const x = frameX + (i * frameWidth / 10)
-          ctx.beginPath()
-          ctx.moveTo(x, frameY)
-          ctx.lineTo(x, frameY + frameHeight)
-          ctx.stroke()
-        }
-        for (let i = 0; i < 8; i++) {
-          const y = frameY + (i * frameHeight / 8)
-          ctx.beginPath()
-          ctx.moveTo(frameX, y)
-          ctx.lineTo(frameX + frameWidth, y)
-          ctx.stroke()
-        }
-        
-        // Placeholder text
-        ctx.fillStyle = '#888888'
-        ctx.font = 'bold 16px Arial'
-        ctx.textAlign = 'center'
-        ctx.fillText('NO IMAGE AVAILABLE', canvas.width/2, canvas.height/2 - 10)
-        ctx.font = '14px Arial'
-        ctx.fillText('Add image to /public/slides/', canvas.width/2, canvas.height/2 + 10)
-      }
-
-      const fadeProgress = Math.min((Date.now() - fadeStartRef.current) / 1000, 1)
-      ctx.fillStyle = `rgba(0,0,0,${1 - fadeProgress})`
-      ctx.fillRect(frameX, frameY, frameWidth, frameHeight)
-
-      ctx.shadowColor = '#1E90FF'
-      ctx.shadowBlur = 15
-      ctx.lineWidth = 4
-      ctx.strokeStyle = '#1E90FF'
-      ctx.strokeRect(frameX - 10, frameY - 10, frameWidth + 20, frameHeight + 20)
-      ctx.shadowBlur = 0
-
-      // Film information overlay with dodger blue glow
-      ctx.shadowColor = '#1E90FF'
-      ctx.shadowBlur = 4
-      ctx.fillStyle = '#1E90FF'
-      ctx.font = 'bold 16px "Courier New", monospace'
-      ctx.textAlign = 'left'
-      
-      // Film frame info
-      ctx.fillText(currentFilm.title, 20, 30)
-      ctx.font = '12px "Courier New", monospace'
-      ctx.fillText(`Type: ${currentFilm.type}`, 20, 50)
-      ctx.fillText(`Time: ${currentFilm.timestamp}`, 20, 65)
-      ctx.fillText(`Desc: ${currentFilm.description}`, 20, 80)
-      
-      // Enhanced scan line effect with dodger blue
-      ctx.shadowBlur = 0
-      for (let i = 0; i < canvas.height; i += 2) {
-        ctx.fillStyle = i % 4 === 0 ? 'rgba(30, 144, 255, 0.08)' : 'rgba(30, 144, 255, 0.04)'
-        ctx.fillRect(0, i, canvas.width, 1)
-      }
-      
-      // Phosphor persistence effect with dodger blue
-      const time = Date.now()
-      ctx.fillStyle = `rgba(30, 144, 255, ${0.1 + Math.sin(time * 0.01) * 0.05})`
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      texture.needsUpdate = true
-    }
-    
-    updateCanvas()
-    return { texture, updateCanvas }
-  }, [currentSlide, filmSlides])
-
-
-
-  // Create metal texture for computer case
-  const metalTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 256
-    const ctx = canvas.getContext('2d')!
-    
-    // Base metal color
-    ctx.fillStyle = '#1a1a1a'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Add brushed metal effect
-    for (let i = 0; i < canvas.height; i += 2) {
-      const alpha = 0.1 + Math.random() * 0.2
-      ctx.fillStyle = `rgba(100, 100, 100, ${alpha})`
-      ctx.fillRect(0, i, canvas.width, 1)
-    }
-    
-    // Add scratches and wear
-    for (let i = 0; i < 20; i++) {
-      const x = Math.random() * canvas.width
-      const y = Math.random() * canvas.height
-      const length = 10 + Math.random() * 50
-      
-      ctx.strokeStyle = `rgba(80, 80, 80, ${0.3 + Math.random() * 0.4})`
-      ctx.lineWidth = 0.5 + Math.random()
-      ctx.beginPath()
-      ctx.moveTo(x, y)
-      ctx.lineTo(x + length, y + (Math.random() - 0.5) * 10)
-      ctx.stroke()
-    }
-    
-    return new THREE.CanvasTexture(canvas)
-  }, [])
-
-  useEffect(() => {
-    const updateInterval = setInterval(() => {
-      canvasTexture.updateCanvas()
-    }, 500) // Update every 500ms for cursor blink
-    
-    return () => clearInterval(updateInterval)
-  }, [canvasTexture])
+  const iconX = -SCREEN_WIDTH / 2 + 0.12
+  const iconY = SCREEN_HEIGHT / 2 - 0.12
 
   return (
-    <group ref={meshRef} position={position}>
-      {/* Computer Tower/Case - More compact and realistic proportions */}
-      <mesh position={[-1.5, -0.15, 0.1]} castShadow>
-        <boxGeometry args={[0.35, 1.0, 0.6]} />
-        <meshStandardMaterial 
-          map={metalTexture}
-          color="#f5f5dc" 
-          metalness={0.02}
-          roughness={0.85}
+    <group>
+      <mesh
+        position={[0, 0, 0]}
+        onPointerDown={(event) => {
+          if (event.button === 0) {
+            setOpenFolder(null)
+          }
+        }}
+        castShadow
+        receiveShadow
+      >
+        <planeGeometry args={[SCREEN_WIDTH, SCREEN_HEIGHT]} />
+        <meshStandardMaterial
+          ref={screenMaterial}
+          map={wallpaperTexture}
+          emissive="#0c2f51"
+          emissiveIntensity={0.85}
+          emissiveMap={wallpaperTexture}
+          roughness={0.25}
+          metalness={0.12}
+          toneMapped={false}
         />
       </mesh>
-      
-      {/* Tower vents - repositioned for new case */}
-      {Array.from({ length: 6 }, (_, i) => (
-        <mesh key={i} position={[-1.33, 0.2 - i * 0.08, 0.41]}>
-          <boxGeometry args={[0.1, 0.015, 0.01]} />
-          <meshStandardMaterial color="#222222" metalness={0.1} roughness={0.9} />
-        </mesh>
-      ))}
-      
-      {/* Tower details - floppy drive with realistic bezel */}
-      <mesh position={[-1.38, 0.05, 0.41]}>
-        <boxGeometry args={[0.12, 0.06, 0.015]} />
-        <meshStandardMaterial 
-          color="#1a1a1a" 
-          metalness={0.3}
-          roughness={0.7}
-        />
-      </mesh>
-      
-      {/* Floppy drive slot */}
-      <mesh position={[-1.37, 0.05, 0.41]}>
-        <boxGeometry args={[0.09, 0.03, 0.01]} />
-        <meshStandardMaterial color="#000000" />
-      </mesh>
-      
-      {/* Power LED with realistic glow */}
-      <mesh position={[-1.35, 0.1, 0.41]}>
-        <sphereGeometry args={[0.008, 8, 8]} />
-        <meshStandardMaterial 
-          color="#ff4422"
-          emissive={new THREE.Color(0xff2200)}
-          emissiveIntensity={0.9}
+      <mesh position={[0, 0, 0.001]}>
+        <planeGeometry args={[SCREEN_WIDTH, SCREEN_HEIGHT]} />
+        <meshBasicMaterial
+          ref={overlayMaterial}
+          map={scanlineTexture}
           transparent
-          opacity={0.95}
+          opacity={0.2}
+          color="#90c1ff"
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
         />
       </mesh>
-      
-      {/* CRT Monitor - More realistic proportions and positioning */}
-      <mesh position={[0, 0.05, -0.3]} castShadow>
-        <boxGeometry args={[1.2, 0.95, 1.0]} />
-        <meshStandardMaterial 
-          color="#f8f8f0" 
-          metalness={0.02}
-          roughness={0.88}
+      <group position={[iconX, iconY, 0.02]}>
+        <FolderIcon
+          id="media"
+          label="Media"
+          position={[0, 0, 0]}
+          onOpen={setOpenFolder}
+          isActive={openFolder === 'media'}
         />
-      </mesh>
-      
-      {/* Monitor ventilation grilles - repositioned */}
-      {Array.from({ length: 10 }, (_, i) => (
-        <mesh key={i} position={[0.55, 0.25 - i * 0.035, 0.2]}>
-          <boxGeometry args={[0.06, 0.015, 0.008]} />
-          <meshStandardMaterial color="#aaaaaa" metalness={0.05} roughness={0.8} />
-        </mesh>
-      ))}
-      
-      {/* Monitor brand label - repositioned */}
-      <mesh position={[0, -0.25, 0.16]}>
-        <planeGeometry args={[0.25, 0.06]} />
-        <meshStandardMaterial 
-          color="#aaaaaa"
-          roughness={0.5}
-          metalness={0.08}
+        <FolderIcon
+          id="videos"
+          label="Videos"
+          position={[0, -0.14, 0]}
+          onOpen={setOpenFolder}
+          isActive={openFolder === 'videos'}
         />
-      </mesh>
-      
-      {/* Monitor screen bezel - proper CRT depth and proportions */}
-      <mesh position={[0, 0.1, 0.15]}>
-        <boxGeometry args={[1.0, 0.75, 0.12]} />
-        <meshStandardMaterial 
-          color="#2a2a2a" 
-          metalness={0.08}
-          roughness={0.92}
-        />
-      </mesh>
-      
-      {/* Screen with curved glass effect - better positioned */}
-      <mesh ref={screenRef} position={[0, 0.1, 0.22]} scale={[1, 1, 0.98]}>
-        <planeGeometry args={[0.9, 0.68]} />
-        <meshStandardMaterial 
-          map={canvasTexture.texture}
-          emissive={new THREE.Color(0x0033AA)}
-          emissiveIntensity={1.8}
-          transparent
-          opacity={1.0}
-        />
-      </mesh>
-      
-      {/* Screen glass reflection - very subtle in darkness */}
-      <mesh position={[0, 0.1, 0.23]}>
-        <planeGeometry args={[0.9, 0.68]} />
-        <meshPhysicalMaterial
-          color="#1E90FF"
-          transparent
-          opacity={0.05}
-          roughness={0.05}
-          metalness={0}
-          transmission={0.9}
-          reflectivity={0.8}
-          clearcoat={1}
-          clearcoatRoughness={0.2}
-          envMapIntensity={0.4}
-        />
-      </mesh>
-      
-      {/* CRT glow effect - enhanced for dark atmosphere */}
-      <mesh position={[0, 0.1, 0.225]}>
-        <planeGeometry args={[0.92, 0.7]} />
-        <meshStandardMaterial 
-          color="#001155"
-          transparent
-          opacity={0.08}
-          emissive={new THREE.Color(0x0044BB)}
-          emissiveIntensity={0.3}
-        />
-      </mesh>
-
-      {/* Classic CRT Keyboard - more compact and realistic */}
-      <mesh position={[0.1, -0.65, 0.6]} rotation={[0, 0, 0]} castShadow>
-        <boxGeometry args={[1.4, 0.06, 0.4]} />
-        <meshStandardMaterial 
-          color="#f5f5dc" 
-          metalness={0.02}
-          roughness={0.88}
-        />
-      </mesh>
-
-      {/* Keyboard slope/wedge */}
-      <mesh position={[0.1, -0.63, 0.42]} rotation={[-0.08, 0, 0]} castShadow>
-        <boxGeometry args={[1.4, 0.03, 0.08]} />
-        <meshStandardMaterial 
-          color="#eeeedc" 
-          metalness={0.02}
-          roughness={0.9}
-        />
-      </mesh>
-
-      {/* Individual keyboard keys - more realistic layout */}
-      {Array.from({ length: 48 }, (_, i) => {
-        const row = Math.floor(i / 12)
-        const col = i % 12
-        const x = -0.35 + col * 0.06
-        const z = 0.5 + row * 0.06
-        return (
-          <mesh key={i} position={[x, -0.62, z]} castShadow>
-            <boxGeometry args={[0.045, 0.015, 0.045]} />
-            <meshStandardMaterial 
-              color="#e8e8dc" 
-              metalness={0.03}
-              roughness={0.75}
-            />
-          </mesh>
-        )
-      })}
-
-      {/* Classic CRT Mouse - repositioned and resized */}
-      <mesh position={[0.9, -0.65, 0.4]} castShadow>
-        <boxGeometry args={[0.08, 0.03, 0.12]} />
-        <meshStandardMaterial 
-          color="#f5f5dc" 
-          metalness={0.02}
-          roughness={0.88}
-        />
-      </mesh>
-
-      {/* Mouse buttons */}
-      <mesh position={[0.88, -0.64, 0.37]}>
-        <boxGeometry args={[0.025, 0.008, 0.04]} />
-        <meshStandardMaterial 
-          color="#eeeedc" 
-          metalness={0.03}
-          roughness={0.8}
-        />
-      </mesh>
-      <mesh position={[0.92, -0.64, 0.37]}>
-        <boxGeometry args={[0.025, 0.008, 0.04]} />
-        <meshStandardMaterial 
-          color="#eeeedc" 
-          metalness={0.03}
-          roughness={0.8}
-        />
-      </mesh>
-      
-      {/* Monitor stand - simplified and repositioned */}
-      <mesh position={[0, -0.48, -0.1]}>
-        <cylinderGeometry args={[0.2, 0.25, 0.12, 8]} />
-        <meshStandardMaterial 
-          color="#f5f5dc"
-          metalness={0.02}
-          roughness={0.88}
-        />
-      </mesh>
-      
-      {/* Monitor stand base */}
-      <mesh position={[0, -0.54, -0.1]} receiveShadow>
-        <cylinderGeometry args={[0.3, 0.3, 0.04, 8]} />
-        <meshStandardMaterial 
-          color="#eeeedc"
-          metalness={0.03}
-          roughness={0.85}
-        />
-      </mesh>
-      
-
-      
-      
-
-      
+      </group>
+      {openFolder && <FolderWindow folder={openFolder} onClose={() => setOpenFolder(null)} />}
     </group>
   )
 }
 
-const DustParticles: React.FC = () => {
-  const pointsRef = useRef<THREE.Points>(null)
-  const particleCount = 200
-  
-  const positions = useMemo(() => {
-    const pos = new Float32Array(particleCount * 3)
-    for (let i = 0; i < particleCount; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 8
-      pos[i * 3 + 1] = Math.random() * 6
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 8
-    }
-    return pos
-  }, [])
-
-  useFrame((state) => {
-    if (pointsRef.current) {
-      pointsRef.current.rotation.y += 0.0008
-      const positions = pointsRef.current.geometry.attributes.position.array as Float32Array
-      for (let i = 0; i < particleCount; i++) {
-        const index = i * 3
-        // Floating motion
-        positions[index + 1] += Math.sin(state.clock.elapsedTime * 0.5 + i * 0.1) * 0.001
-        // Slight horizontal drift
-        positions[index] += Math.cos(state.clock.elapsedTime * 0.3 + i * 0.05) * 0.0005
-        positions[index + 2] += Math.sin(state.clock.elapsedTime * 0.4 + i * 0.08) * 0.0003
-        
-        // Reset particles that float too high
-        if (positions[index + 1] > 6) {
-          positions[index + 1] = -1
-        }
-      }
-      pointsRef.current.geometry.attributes.position.needsUpdate = true
-    }
-  })
-
+const CRTMonitor: React.FC<ScreenSurfaceProps> = ({ openFolder, setOpenFolder }) => {
   return (
-    <points ref={pointsRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={particleCount}
-          array={positions}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <pointsMaterial 
-        size={0.008} 
-        color="#1E90FF" 
-        opacity={0.15} 
-        transparent 
-        sizeAttenuation={true}
-        alphaTest={0.1}
-      />
-    </points>
+    <group position={[0, 0, 0]} rotation={[-0.04, -0.18, 0]}>
+      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.74, 0.08, 0.54]} />
+        <meshStandardMaterial color="#c9bda0" roughness={0.85} metalness={0.18} />
+      </mesh>
+      <mesh position={[0, 0.18, 0.02]} castShadow>
+        <boxGeometry args={[0.32, 0.18, 0.32]} />
+        <meshStandardMaterial color="#d8ccb0" roughness={0.78} metalness={0.12} />
+      </mesh>
+      <mesh position={[0, 0.62, 0.1]} castShadow>
+        <boxGeometry args={[1.08, 0.72, 0.7]} />
+        <meshStandardMaterial color="#e5dcc2" roughness={0.82} metalness={0.08} />
+      </mesh>
+      <mesh position={[0, 0.63, 0.36]} castShadow>
+        <boxGeometry args={[0.88, 0.6, 0.18]} />
+        <meshStandardMaterial color="#f1e9d0" roughness={0.65} metalness={0.06} />
+      </mesh>
+      <mesh position={[0.34, 0.45, 0.42]}>
+        <boxGeometry args={[0.09, 0.02, 0.02]} />
+        <meshStandardMaterial color="#b6ab8f" roughness={0.5} />
+      </mesh>
+      <mesh position={[0.38, 0.51, 0.43]}>
+        <sphereGeometry args={[0.012, 16, 16]} />
+        <meshStandardMaterial color="#48ff80" emissive="#3bd26a" emissiveIntensity={0.7} />
+      </mesh>
+      <group position={[0, 0.63, 0.43]} rotation={[0.1, 0.18, 0]}>
+        <ScreenSurface openFolder={openFolder} setOpenFolder={setOpenFolder} />
+      </group>
+      <pointLight position={[0, 0.7, 0.45]} intensity={0.45} color="#8cc9ff" distance={1.2} />
+    </group>
   )
 }
 
-const Scene: React.FC = () => {
-  // Create procedural wood texture for desk
-  const woodTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 512
-    const ctx = canvas.getContext('2d')!
-    
-    // Base wood color
-    ctx.fillStyle = '#2a1810'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Wood grain pattern
-    for (let i = 0; i < 50; i++) {
-      const y = Math.random() * canvas.height
-      const alpha = 0.1 + Math.random() * 0.3
-      const width = 2 + Math.random() * 8
-      
-      ctx.strokeStyle = `rgba(50, 30, 20, ${alpha})`
-      ctx.lineWidth = width
-      ctx.beginPath()
-      ctx.moveTo(0, y + Math.sin(0) * 10)
-      for (let x = 0; x < canvas.width; x += 5) {
-        ctx.lineTo(x, y + Math.sin(x * 0.02) * 15)
-      }
-      ctx.stroke()
+const HeroScene: React.FC<HeroSceneProps> = ({ openFolder, setOpenFolder }) => {
+  const woodTexture = useMemo(createWoodTexture, [])
+  const topLightRef = useRef<THREE.SpotLight>(null)
+
+  useFrame(({ clock }) => {
+    if (topLightRef.current) {
+      topLightRef.current.intensity = 1.25 + Math.sin(clock.elapsedTime * 0.7) * 0.08
     }
-    
-    // Add darker knots
-    for (let i = 0; i < 8; i++) {
-      const x = Math.random() * canvas.width
-      const y = Math.random() * canvas.height
-      const radius = 10 + Math.random() * 20
-      
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
-      gradient.addColorStop(0, 'rgba(20, 10, 5, 0.6)')
-      gradient.addColorStop(1, 'rgba(20, 10, 5, 0)')
-      ctx.fillStyle = gradient
-      ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.wrapS = THREE.RepeatWrapping
-    texture.wrapT = THREE.RepeatWrapping
-    texture.repeat.set(2, 1)
-    return texture
-  }, [])
+  })
 
   return (
     <>
-      {/* Ultra-minimal ambient - almost complete darkness */}
-      <ambientLight color="#000308" intensity={0.01} />
-      
-      {/* Primary CRT Screen Glow - Dominant light source */}
-      <pointLight
-        position={[0, 0.1, 0.5]}
-        intensity={4.5}
-        color="#1E90FF"
-        distance={3.5}
-        decay={1.2}
+      <color attach="background" args={['#020307']} />
+      <fog attach="fog" args={['#020307', 4.5, 12]} />
+      <ambientLight intensity={0.12} />
+      <spotLight
+        ref={topLightRef}
+        position={[0, 3.1, 0.3]}
+        angle={0.85}
+        penumbra={0.8}
+        intensity={1.3}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.0004}
       />
-      
-      {/* Subtle screen reflection on film strip */}
-      <pointLight
-        position={[0, 1.8, 0]}
-        intensity={0.3}
-        color="#1E90FF"
-        distance={1.5}
-        decay={3}
-      />
-      
-      {/* Very dim LED power indicator */}
-      <pointLight
-        position={[-1.35, 0.1, 0.41]}
-        intensity={0.1}
-        color="#ff2200"
-        distance={0.2}
-        decay={4}
-      />
-      
-      <FilmStrip />
-      <CRTComputer position={[0, 0, 0]} />
-      <DustParticles />
-      
-      {/* Barely visible desk surface - only lit by screen glow */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.7, 0]}>
-        <planeGeometry args={[6, 4]} />
-        <MeshReflectorMaterial
-          map={woodTexture}
-          color="#0a0a0a"
-          metalness={0.2}
-          roughness={0.7}
-          mirror={0.3}
-          mixStrength={5}
-          blur={[200, 100]}
-          mixBlur={1}
-          depthScale={0.01}
-          minDepthThreshold={0.4}
-          maxDepthThreshold={1.4}
-        />
+      <pointLight position={[0.2, 0.6, 1.4]} intensity={0.35} color="#4f82ff" />
+
+      <mesh position={[0, 1.4, 0]} scale={[8, 4.5, 8]}>
+        <boxGeometry args={[8, 4.5, 8]} />
+        <meshStandardMaterial color="#04060a" side={THREE.BackSide} roughness={1} metalness={0} />
       </mesh>
-      
-      {/* Pitch black floor */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.71, 0]}>
-        <planeGeometry args={[20, 20]} />
-        <meshStandardMaterial 
-          color="#000000" 
-          roughness={1.0}
-          metalness={0.0}
-        />
-      </mesh>
-      
-      <Environment preset="night" environmentIntensity={0.02} />
+
+      <group position={[0, 0, 0]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+          <planeGeometry args={[6, 4]} />
+          <meshStandardMaterial map={woodTexture} roughness={0.92} metalness={0.05} />
+        </mesh>
+        <ContactShadows position={[0, 0.01, 0.2]} opacity={0.55} scale={5.4} blur={2.4} far={2.2} />
+        <CRTMonitor openFolder={openFolder} setOpenFolder={setOpenFolder} />
+      </group>
+
+      <OrbitControls
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2.15}
+        minPolarAngle={Math.PI / 3.6}
+        minDistance={1.5}
+        maxDistance={2.6}
+        target={[0, 0.58, 0.28]}
+      />
     </>
   )
 }
 
-const LoadingProgress: React.FC = () => {
-  const { progress } = useProgress()
-  
-  if (progress >= 100) return null
-  
-  return (
-    <Html center>
-      <div className="text-crt-glow font-mono">
-        Loading: {Math.round(progress)}%
-      </div>
-    </Html>
-  )
-}
-
-const HeroScene: React.FC = () => {
-  return (
-    <div className="w-full h-full relative">
-      <Canvas
-        shadows
-        camera={{
-          position: [1.5, 0.8, 2.2],
-          fov: 45,
-        }}
-        gl={{
-          antialias: true,
-          alpha: false,
-          powerPreference: 'high-performance',
-          toneMapping: THREE.NoToneMapping,
-        }}
-        dpr={Math.min(2, window.devicePixelRatio)}
-      >
-        <Scene />
-        <LoadingProgress />
-        
-        <OrbitControls
-          target={[0, 0, 0]}
-          enablePan={false}
-          enableZoom={true}
-          minDistance={1.5}
-          maxDistance={4}
-          maxPolarAngle={Math.PI / 2.2}
-          minPolarAngle={Math.PI / 6}
-          enableDamping
-          dampingFactor={0.05}
-          autoRotate={false}
-        />
-        
-        <EffectComposer>
-          <Bloom
-            intensity={2.0}
-            luminanceThreshold={0.15}
-            luminanceSmoothing={0.9}
-            radius={0.7}
-            levels={8}
-          />
-          <ToneMapping
-            mode={ToneMappingMode.ACES_FILMIC}
-          />
-        </EffectComposer>
-      </Canvas>
-    </div>
-  )
-}
-
-export default HeroScene 
+export default HeroScene
