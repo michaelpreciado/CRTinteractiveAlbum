@@ -1,22 +1,19 @@
-import React, { Suspense, useState } from 'react'
+import React, { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Loader } from '@react-three/drei'
-import HeroScene, { FolderId } from './HeroScene'
+import HeroScene from './HeroScene'
 
 const App: React.FC = () => {
-  const [openFolder, setOpenFolder] = useState<FolderId | null>(null)
-
   return (
-    <div className="relative min-h-screen bg-black">
+    <div className="relative min-h-screen bg-[#f4f0e6]">
       <Canvas
         className="w-full h-screen"
         shadows
-        dpr={[1, 1.5]}
-        camera={{ position: [0.12, 1.1, 2.15], fov: 32 }}
-        onPointerMissed={() => setOpenFolder(null)}
+        dpr={[1, 2]}
+        camera={{ position: [0.26, 0.62, 1.55], fov: 32 }}
       >
         <Suspense fallback={null}>
-          <HeroScene openFolder={openFolder} setOpenFolder={setOpenFolder} />
+          <HeroScene />
         </Suspense>
       </Canvas>
       <Loader
