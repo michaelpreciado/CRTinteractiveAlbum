@@ -1,126 +1,85 @@
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { ContactShadows, OrbitControls, Text, useCursor } from '@react-three/drei'
+import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 
-export type FolderId = 'media' | 'videos'
+const SCREEN_WIDTH = 0.36
+const SCREEN_HEIGHT = 0.27
 
-interface HeroSceneProps {
-  openFolder: FolderId | null
-  setOpenFolder: React.Dispatch<React.SetStateAction<FolderId | null>>
-}
-
-interface ScreenSurfaceProps {
-  openFolder: FolderId | null
-  setOpenFolder: React.Dispatch<React.SetStateAction<FolderId | null>>
-}
-
-interface FolderIconProps {
-  id: FolderId
-  label: string
-  position: [number, number, number]
-  onOpen: (folder: FolderId) => void
-  isActive: boolean
-}
-
-interface FolderWindowProps {
-  folder: FolderId
-  onClose: () => void
-}
-
-const SCREEN_WIDTH = 0.68
-const SCREEN_HEIGHT = 0.46
-const FOLDER_DETAILS: Record<FolderId, { title: string; description: string; items: string[] }> = {
-  media: {
-    title: 'Media Assets',
-    description: 'Retouched stills, logo lockups, and layered compositions ready for export.',
-    items: ['Photoshoot_1997.zip', 'CRT_branding.ai', 'Ambient_loop.wav'],
-  },
-  videos: {
-    title: 'Video Library',
-    description: 'Retro cuts, VHS rips, and timeline exports for the interactive album.',
-    items: ['Intro_sequence.mov', 'Behind_the_scenes.mp4', 'CRT_glitches.webm'],
-  },
-}
-
-const createWallpaperTexture = () => {
+const createBootScreenTexture = () => {
   const canvas = document.createElement('canvas')
   canvas.width = 1024
   canvas.height = 768
   const ctx = canvas.getContext('2d')!
 
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-  skyGradient.addColorStop(0, '#88c8ff')
-  skyGradient.addColorStop(0.55, '#76b2ff')
-  skyGradient.addColorStop(0.65, '#60a5ff')
-  ctx.fillStyle = skyGradient
+  ctx.fillStyle = '#050608'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  const sunX = canvas.width * 0.78
-  const sunY = canvas.height * 0.25
-  const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, canvas.height * 0.22)
-  sunGradient.addColorStop(0, 'rgba(255, 255, 230, 0.8)')
-  sunGradient.addColorStop(0.4, 'rgba(255, 255, 200, 0.4)')
-  sunGradient.addColorStop(1, 'rgba(255, 255, 200, 0)')
-  ctx.fillStyle = sunGradient
+  const glow = ctx.createRadialGradient(520, 320, 40, 520, 320, 420)
+  glow.addColorStop(0, 'rgba(32, 78, 150, 0.72)')
+  glow.addColorStop(0.45, 'rgba(32, 78, 150, 0.36)')
+  glow.addColorStop(1, 'rgba(32, 78, 150, 0)')
+  ctx.fillStyle = glow
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  const distantHill = new Path2D()
-  distantHill.moveTo(0, canvas.height * 0.62)
-  distantHill.bezierCurveTo(
-    canvas.width * 0.2,
-    canvas.height * 0.45,
-    canvas.width * 0.48,
-    canvas.height * 0.68,
-    canvas.width * 0.72,
-    canvas.height * 0.55,
-  )
-  distantHill.bezierCurveTo(
-    canvas.width * 0.88,
-    canvas.height * 0.48,
-    canvas.width * 0.95,
-    canvas.height * 0.58,
-    canvas.width,
-    canvas.height * 0.56,
-  )
-  distantHill.lineTo(canvas.width, canvas.height)
-  distantHill.lineTo(0, canvas.height)
-  distantHill.closePath()
-  ctx.fillStyle = '#3aa63f'
-  ctx.fill(distantHill)
+  ctx.save()
+  ctx.translate(352, 296)
+  const flagSize = 60
+  const flagGap = 6
+  const flagColors = ['#f24f1f', '#7cbc00', '#0078d7', '#ffb900']
+  flagColors.forEach((color, index) => {
+    const x = index % 2
+    const y = Math.floor(index / 2)
+    ctx.fillStyle = color
+    ctx.fillRect(x * (flagSize + flagGap), y * (flagSize + flagGap), flagSize, flagSize)
+  })
+  ctx.restore()
 
-  const foregroundHill = new Path2D()
-  foregroundHill.moveTo(0, canvas.height * 0.68)
-  foregroundHill.bezierCurveTo(
-    canvas.width * 0.18,
-    canvas.height * 0.58,
-    canvas.width * 0.38,
-    canvas.height * 0.76,
-    canvas.width * 0.62,
-    canvas.height * 0.66,
-  )
-  foregroundHill.bezierCurveTo(
-    canvas.width * 0.82,
-    canvas.height * 0.6,
-    canvas.width * 0.92,
-    canvas.height * 0.7,
-    canvas.width,
-    canvas.height * 0.66,
-  )
-  foregroundHill.lineTo(canvas.width, canvas.height)
-  foregroundHill.lineTo(0, canvas.height)
-  foregroundHill.closePath()
-  ctx.fillStyle = '#2c8b35'
-  ctx.fill(foregroundHill)
+  ctx.fillStyle = '#f5f7ff'
+  ctx.font = 'bold 82px "Segoe UI", "Helvetica Neue", Arial'
+  ctx.fillText('Windows', 430, 340)
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
-  ctx.beginPath()
-  ctx.ellipse(canvas.width * 0.25, canvas.height * 0.58, canvas.width * 0.18, canvas.height * 0.08, -0.4, 0, Math.PI * 2)
-  ctx.fill()
+  ctx.fillStyle = '#f7a93b'
+  ctx.font = 'bold 62px "Segoe UI", Arial'
+  ctx.fillText('xp', 782, 340)
+
+  ctx.fillStyle = '#92b6ff'
+  ctx.font = '28px "Segoe UI", Arial'
+  ctx.fillText('Professional', 434, 382)
+
+  ctx.fillStyle = '#4f7fba'
+  ctx.font = '26px "Segoe UI", Arial'
+  ctx.fillText('Please wait...', 440, 528)
+
+  const barX = 368
+  const barY = 560
+  const barWidth = 312
+  const barHeight = 18
+  ctx.fillStyle = '#0d1b2e'
+  ctx.fillRect(barX, barY, barWidth, barHeight)
+  ctx.strokeStyle = '#1f3d66'
+  ctx.lineWidth = 3
+  ctx.strokeRect(barX - 1.5, barY - 1.5, barWidth + 3, barHeight + 3)
+
+  ctx.fillStyle = '#2056a4'
+  const segmentWidth = 46
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(barX + 8 + i * (segmentWidth + 12), barY + 3, segmentWidth, barHeight - 6)
+  }
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const noise = (Math.random() - 0.5) * 10
+    data[i] = Math.max(0, Math.min(255, data[i] + noise))
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise))
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise))
+  }
+  ctx.putImageData(imageData, 0, 0)
 
   const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
   texture.anisotropy = 4
+  texture.colorSpace = THREE.SRGBColorSpace
   return texture
 }
 
@@ -129,9 +88,9 @@ const createScanlineTexture = () => {
   canvas.width = 2
   canvas.height = 4
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = 'rgba(134, 184, 255, 0.22)'
+  ctx.fillStyle = 'rgba(144, 196, 255, 0.2)'
   ctx.fillRect(0, 0, canvas.width, 1)
-  ctx.fillStyle = 'rgba(6, 20, 36, 0.8)'
+  ctx.fillStyle = 'rgba(6, 18, 32, 0.8)'
   ctx.fillRect(0, 1, canvas.width, 3)
   const texture = new THREE.CanvasTexture(canvas)
   texture.wrapS = THREE.RepeatWrapping
@@ -141,224 +100,34 @@ const createScanlineTexture = () => {
   return texture
 }
 
-const createWoodTexture = () => {
-  const canvas = document.createElement('canvas')
-  canvas.width = 1024
-  canvas.height = 1024
-  const ctx = canvas.getContext('2d')!
-
-  const baseGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-  baseGradient.addColorStop(0, '#3b2416')
-  baseGradient.addColorStop(1, '#24140b')
-  ctx.fillStyle = baseGradient
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-  for (let i = 0; i < 260; i++) {
-    const y = Math.random() * canvas.height
-    const alpha = 0.1 + Math.random() * 0.15
-    const width = 1 + Math.random() * 6
-    ctx.strokeStyle = `rgba(94, 58, 33, ${alpha})`
-    ctx.lineWidth = width
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.bezierCurveTo(
-      canvas.width * 0.25,
-      y + Math.sin(y * 0.01) * 15,
-      canvas.width * 0.5,
-      y + Math.cos(y * 0.005) * 20,
-      canvas.width,
-      y + Math.sin(y * 0.008) * 18,
-    )
-    ctx.stroke()
-  }
-
-  for (let i = 0; i < 28; i++) {
-    const x = Math.random() * canvas.width
-    const y = Math.random() * canvas.height
-    const radius = 30 + Math.random() * 60
-    const knotGradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
-    knotGradient.addColorStop(0, 'rgba(60, 34, 16, 0.6)')
-    knotGradient.addColorStop(1, 'rgba(60, 34, 16, 0)')
-    ctx.fillStyle = knotGradient
-    ctx.beginPath()
-    ctx.arc(x, y, radius, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
-  texture.repeat.set(1.5, 1.5)
-  texture.anisotropy = 4
-  texture.colorSpace = THREE.SRGBColorSpace
-  return texture
-}
-
-const FolderIcon: React.FC<FolderIconProps> = ({ id, label, position, onOpen, isActive }) => {
-  const [hovered, setHovered] = useState(false)
-  useCursor(hovered, 'pointer')
-  const topColor = isActive || hovered ? '#fbe08a' : '#f2d278'
-  const bodyColor = isActive || hovered ? '#f7cc66' : '#e6be5b'
-
-  return (
-    <group
-      position={position}
-      onPointerOver={(event) => {
-        event.stopPropagation()
-        setHovered(true)
-      }}
-      onPointerOut={() => setHovered(false)}
-      onClick={(event) => {
-        event.stopPropagation()
-        onOpen(id)
-      }}
-    >
-      <mesh position={[0, 0.03, -0.005]} scale={[1, 1, 0.6]}>
-        <boxGeometry args={[0.07, 0.018, 0.03]} />
-        <meshStandardMaterial color={topColor} metalness={0.1} roughness={0.35} />
-      </mesh>
-      <mesh position={[0, 0, 0]}>
-        <boxGeometry args={[0.08, 0.06, 0.03]} />
-        <meshStandardMaterial color={bodyColor} metalness={0.1} roughness={0.4} />
-      </mesh>
-      <Text
-        position={[0, -0.055, 0]}
-        fontSize={0.034}
-        anchorX="center"
-        anchorY="middle"
-        color={isActive || hovered ? '#d6ecff' : '#ffffff'}
-        outlineWidth={0.002}
-        outlineColor="rgba(0,0,0,0.7)"
-      >
-        {label}
-      </Text>
-    </group>
-  )
-}
-
-const FolderWindow: React.FC<FolderWindowProps> = ({ folder, onClose }) => {
-  const { title, description, items } = FOLDER_DETAILS[folder]
-  const [hoveredClose, setHoveredClose] = useState(false)
-  useCursor(hoveredClose, 'pointer')
-
-  return (
-    <group
-      position={[0.1, -0.02, 0.02]}
-      onPointerDown={(event) => event.stopPropagation()}
-      onPointerOver={(event) => event.stopPropagation()}
-    >
-      <mesh position={[0.01, -0.01, -0.002]}>
-        <planeGeometry args={[0.5, 0.34]} />
-        <meshBasicMaterial color="#0c1928" transparent opacity={0.55} />
-      </mesh>
-      <mesh>
-        <planeGeometry args={[0.48, 0.32]} />
-        <meshStandardMaterial color="#f3f3f3" roughness={0.85} metalness={0.05} />
-      </mesh>
-      <mesh position={[0, 0.13, 0.001]}> 
-        <planeGeometry args={[0.48, 0.06]} />
-        <meshStandardMaterial color="#2b63d7" emissive="#224aa6" emissiveIntensity={0.6} roughness={0.4} />
-      </mesh>
-      <Text position={[-0.21, 0.13, 0.01]} fontSize={0.035} anchorX="left" anchorY="middle" color="#ffffff">
-        {title}
-      </Text>
-      <group position={[0.205, 0.13, 0.015]}>
-        <mesh
-          onPointerOver={(event) => {
-            event.stopPropagation()
-            setHoveredClose(true)
-          }}
-          onPointerOut={() => setHoveredClose(false)}
-          onClick={(event) => {
-            event.stopPropagation()
-            onClose()
-          }}
-        >
-          <boxGeometry args={[0.05, 0.05, 0.008]} />
-          <meshStandardMaterial
-            color={hoveredClose ? '#f07b6f' : '#d95f54'}
-            emissive="#822320"
-            emissiveIntensity={hoveredClose ? 0.7 : 0.5}
-            roughness={0.5}
-          />
-        </mesh>
-        <Text
-          position={[0, 0, 0.01]}
-          fontSize={0.03}
-          anchorX="center"
-          anchorY="middle"
-          color="#ffffff"
-        >
-          ✕
-        </Text>
-      </group>
-      <Text
-        position={[-0.21, 0.05, 0.01]}
-        fontSize={0.028}
-        anchorX="left"
-        anchorY="top"
-        color="#1a2e42"
-        maxWidth={0.4}
-        lineHeight={1.3}
-      >
-        {description}
-      </Text>
-      {items.map((item, index) => (
-        <Text
-          key={item}
-          position={[-0.21, -0.02 - index * 0.055, 0.01]}
-          fontSize={0.03}
-          anchorX="left"
-          anchorY="middle"
-          color="#1a2e42"
-        >
-          • {item}
-        </Text>
-      ))}
-    </group>
-  )
-}
-
-const ScreenSurface: React.FC<ScreenSurfaceProps> = ({ openFolder, setOpenFolder }) => {
-  const wallpaperTexture = useMemo(createWallpaperTexture, [])
+const ScreenSurface: React.FC = () => {
+  const bootTexture = useMemo(createBootScreenTexture, [])
   const scanlineTexture = useMemo(createScanlineTexture, [])
   const screenMaterial = useRef<THREE.MeshStandardMaterial>(null)
   const overlayMaterial = useRef<THREE.MeshBasicMaterial>(null)
 
   useFrame(({ clock }) => {
+    const time = clock.elapsedTime
     if (screenMaterial.current) {
-      const flicker = 0.82 + Math.sin(clock.elapsedTime * 2.4) * 0.05
-      screenMaterial.current.emissiveIntensity = flicker
+      screenMaterial.current.emissiveIntensity = 0.75 + Math.sin(time * 2.3) * 0.06
     }
     if (overlayMaterial.current) {
-      overlayMaterial.current.opacity = 0.18 + Math.sin(clock.elapsedTime * 9) * 0.03
+      overlayMaterial.current.opacity = 0.18 + Math.sin(time * 8.4) * 0.025
     }
   })
 
-  const iconX = -SCREEN_WIDTH / 2 + 0.12
-  const iconY = SCREEN_HEIGHT / 2 - 0.12
-
   return (
     <group>
-      <mesh
-        position={[0, 0, 0]}
-        onPointerDown={(event) => {
-          if (event.button === 0) {
-            setOpenFolder(null)
-          }
-        }}
-        castShadow
-        receiveShadow
-      >
+      <mesh castShadow receiveShadow>
         <planeGeometry args={[SCREEN_WIDTH, SCREEN_HEIGHT]} />
         <meshStandardMaterial
           ref={screenMaterial}
-          map={wallpaperTexture}
-          emissive="#0c2f51"
-          emissiveIntensity={0.85}
-          emissiveMap={wallpaperTexture}
-          roughness={0.25}
-          metalness={0.12}
+          map={bootTexture}
+          emissive="#0b1930"
+          emissiveIntensity={0.82}
+          emissiveMap={bootTexture}
+          roughness={0.28}
+          metalness={0.08}
           toneMapped={false}
         />
       </mesh>
@@ -374,111 +143,102 @@ const ScreenSurface: React.FC<ScreenSurfaceProps> = ({ openFolder, setOpenFolder
           toneMapped={false}
         />
       </mesh>
-      <group position={[iconX, iconY, 0.02]}>
-        <FolderIcon
-          id="media"
-          label="Media"
-          position={[0, 0, 0]}
-          onOpen={setOpenFolder}
-          isActive={openFolder === 'media'}
-        />
-        <FolderIcon
-          id="videos"
-          label="Videos"
-          position={[0, -0.14, 0]}
-          onOpen={setOpenFolder}
-          isActive={openFolder === 'videos'}
-        />
-      </group>
-      {openFolder && <FolderWindow folder={openFolder} onClose={() => setOpenFolder(null)} />}
     </group>
   )
 }
 
-const CRTMonitor: React.FC<ScreenSurfaceProps> = ({ openFolder, setOpenFolder }) => {
+const CRTMonitor: React.FC = () => {
   return (
-    <group position={[0, 0, 0]} rotation={[-0.04, -0.18, 0]}>
-      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.74, 0.08, 0.54]} />
-        <meshStandardMaterial color="#c9bda0" roughness={0.85} metalness={0.18} />
+    <group position={[0, 0, 0]} rotation={[-0.035, -0.32, 0]}>
+      <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.46, 0.05, 0.34]} />
+        <meshStandardMaterial color="#d7c6a5" roughness={0.9} metalness={0.12} />
       </mesh>
-      <mesh position={[0, 0.18, 0.02]} castShadow>
-        <boxGeometry args={[0.32, 0.18, 0.32]} />
-        <meshStandardMaterial color="#d8ccb0" roughness={0.78} metalness={0.12} />
+      <mesh position={[0, 0.09, 0.04]} castShadow>
+        <boxGeometry args={[0.24, 0.08, 0.22]} />
+        <meshStandardMaterial color="#d9c9a7" roughness={0.88} metalness={0.1} />
       </mesh>
-      <mesh position={[0, 0.62, 0.1]} castShadow>
-        <boxGeometry args={[1.08, 0.72, 0.7]} />
-        <meshStandardMaterial color="#e5dcc2" roughness={0.82} metalness={0.08} />
+      <mesh position={[0, 0.18, 0.07]} castShadow>
+        <boxGeometry args={[0.32, 0.12, 0.26]} />
+        <meshStandardMaterial color="#ddccaa" roughness={0.86} metalness={0.08} />
       </mesh>
-      <mesh position={[0, 0.63, 0.36]} castShadow>
-        <boxGeometry args={[0.88, 0.6, 0.18]} />
-        <meshStandardMaterial color="#f1e9d0" roughness={0.65} metalness={0.06} />
+      <mesh position={[0, 0.46, -0.04]} castShadow>
+        <boxGeometry args={[0.46, 0.36, 0.32]} />
+        <meshStandardMaterial color="#e6d8ba" roughness={0.84} metalness={0.08} />
       </mesh>
-      <mesh position={[0.34, 0.45, 0.42]}>
-        <boxGeometry args={[0.09, 0.02, 0.02]} />
-        <meshStandardMaterial color="#b6ab8f" roughness={0.5} />
+      <mesh position={[0, 0.54, 0.12]} castShadow>
+        <boxGeometry args={[0.52, 0.4, 0.14]} />
+        <meshStandardMaterial color="#f1e3c7" roughness={0.8} metalness={0.06} />
       </mesh>
-      <mesh position={[0.38, 0.51, 0.43]}>
-        <sphereGeometry args={[0.012, 16, 16]} />
-        <meshStandardMaterial color="#48ff80" emissive="#3bd26a" emissiveIntensity={0.7} />
+      <mesh position={[0, 0.5, 0.08]} castShadow>
+        <boxGeometry args={[0.44, 0.34, 0.08]} />
+        <meshStandardMaterial color="#dbcaaa" roughness={0.82} metalness={0.06} />
       </mesh>
-      <group position={[0, 0.63, 0.43]} rotation={[0.1, 0.18, 0]}>
-        <ScreenSurface openFolder={openFolder} setOpenFolder={setOpenFolder} />
+      <mesh position={[0, 0.47, 0.04]} castShadow>
+        <boxGeometry args={[0.42, 0.3, 0.04]} />
+        <meshStandardMaterial color="#cbb995" roughness={0.78} metalness={0.05} />
+      </mesh>
+      <group position={[0, 0.47, 0.08]} rotation={[-0.02, 0, 0]}>
+        <ScreenSurface />
       </group>
-      <pointLight position={[0, 0.7, 0.45]} intensity={0.45} color="#8cc9ff" distance={1.2} />
+      <mesh position={[0.18, 0.32, 0.22]} castShadow>
+        <boxGeometry args={[0.06, 0.008, 0.02]} />
+        <meshStandardMaterial color="#c4b38f" roughness={0.6} metalness={0.08} />
+      </mesh>
+      <mesh position={[0.23, 0.32, 0.2]}>
+        <cylinderGeometry args={[0.011, 0.011, 0.012, 24]} />
+        <meshStandardMaterial color="#63e686" emissive="#3faa5e" emissiveIntensity={0.45} roughness={0.4} />
+      </mesh>
+      <mesh position={[0, 0.66, -0.18]} castShadow>
+        <boxGeometry args={[0.32, 0.14, 0.16]} />
+        <meshStandardMaterial color="#d0bf9b" roughness={0.88} metalness={0.08} />
+      </mesh>
     </group>
   )
 }
 
-const HeroScene: React.FC<HeroSceneProps> = ({ openFolder, setOpenFolder }) => {
-  const woodTexture = useMemo(createWoodTexture, [])
-  const topLightRef = useRef<THREE.SpotLight>(null)
+const HeroScene: React.FC = () => {
+  const keyLightRef = useRef<THREE.DirectionalLight>(null)
 
   useFrame(({ clock }) => {
-    if (topLightRef.current) {
-      topLightRef.current.intensity = 1.25 + Math.sin(clock.elapsedTime * 0.7) * 0.08
+    if (keyLightRef.current) {
+      keyLightRef.current.intensity = 0.85 + Math.sin(clock.elapsedTime * 0.6) * 0.05
     }
   })
 
   return (
     <>
-      <color attach="background" args={['#020307']} />
-      <fog attach="fog" args={['#020307', 4.5, 12]} />
-      <ambientLight intensity={0.12} />
-      <spotLight
-        ref={topLightRef}
-        position={[0, 3.1, 0.3]}
-        angle={0.85}
-        penumbra={0.8}
-        intensity={1.3}
+      <color attach="background" args={['#f6f2ea']} />
+      <fog attach="fog" args={['#f6f2ea', 6, 14]} />
+      <ambientLight intensity={0.58} color="#fff6e7" />
+      <directionalLight
+        ref={keyLightRef}
+        position={[1.6, 2.2, 1.2]}
+        intensity={0.9}
+        color="#fff1d5"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-bias={-0.0004}
+        shadow-bias={-0.0003}
       />
-      <pointLight position={[0.2, 0.6, 1.4]} intensity={0.35} color="#4f82ff" />
+      <spotLight position={[-1.4, 1.6, 1.4]} angle={0.6} penumbra={0.8} intensity={0.45} color="#dfe7ff" />
 
-      <mesh position={[0, 1.4, 0]} scale={[8, 4.5, 8]}>
-        <boxGeometry args={[8, 4.5, 8]} />
-        <meshStandardMaterial color="#04060a" side={THREE.BackSide} roughness={1} metalness={0} />
-      </mesh>
-
-      <group position={[0, 0, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-          <planeGeometry args={[6, 4]} />
-          <meshStandardMaterial map={woodTexture} roughness={0.92} metalness={0.05} />
+      <group>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[6, 6]} />
+          <meshStandardMaterial color="#f0e9dc" roughness={0.95} metalness={0.02} />
         </mesh>
-        <ContactShadows position={[0, 0.01, 0.2]} opacity={0.55} scale={5.4} blur={2.4} far={2.2} />
-        <CRTMonitor openFolder={openFolder} setOpenFolder={setOpenFolder} />
+        <ContactShadows position={[0, 0, 0]} opacity={0.35} scale={3.6} blur={2.8} far={2} />
+        <CRTMonitor />
       </group>
 
       <OrbitControls
         enablePan={false}
-        maxPolarAngle={Math.PI / 2.15}
-        minPolarAngle={Math.PI / 3.6}
-        minDistance={1.5}
-        maxDistance={2.6}
-        target={[0, 0.58, 0.28]}
+        minPolarAngle={Math.PI / 4}
+        maxPolarAngle={Math.PI / 2.2}
+        minDistance={0.65}
+        maxDistance={2}
+        target={[0, 0.5, 0.08]}
       />
     </>
   )
