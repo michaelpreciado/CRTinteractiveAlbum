@@ -1,9 +1,9 @@
 import { Canvas } from '@react-three/fiber'
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { ACESFilmicToneMapping } from 'three'
 import Scene from './components/Scene'
 import { Loader } from '@react-three/drei'
 import styled, { createGlobalStyle } from 'styled-components'
-import * as THREE from 'three'
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -19,7 +19,7 @@ const UIContainer = styled.div`
   z-index: 10;
   color: white;
   pointer-events: none;
-  
+
   @media (max-width: 768px) {
     top: auto;
     bottom: 20px;
@@ -54,9 +54,10 @@ const Card = styled.div`
     flex-direction: row;
     align-items: center;
     gap: 16px;
-    
-    /* Compact mode for mobile */
-    & > h1, & > p, & > div:first-child {
+
+    & > h1,
+    & > p,
+    & > div:first-child {
       display: none;
     }
   }
@@ -121,34 +122,72 @@ const Badge = styled.div`
   border: 1px solid rgba(255, 255, 255, 0.05);
 `
 
+const ErrorMessage = styled.div`
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(220, 50, 50, 0.15);
+  border: 1px solid rgba(220, 50, 50, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #ff8080;
+  line-height: 1.4;
+`
+
+const ALLOWED_TYPES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png',
+  'image/gif', 'image/webp', 'image/avif',
+])
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function uploadFile(file) {
+  const base64 = await fileToBase64(file)
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64, filename: file.name }),
+  })
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`)
+  }
+  const data = await response.json()
+  return data.url
+}
+
 function App() {
   const [images, setImages] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState(null)
 
-  // Fetch images from database on mount
   useEffect(() => {
-    fetchImages()
-  }, [])
+    if (!error) return
+    const timer = setTimeout(() => setError(null), 5000)
+    return () => clearTimeout(timer)
+  }, [error])
 
-  const fetchImages = async () => {
+  const fetchImages = useCallback(async () => {
     try {
       const response = await fetch('/api/images')
       const data = await response.json()
 
       if (data.needsInit) {
-        // Initialize database with default images
         await fetch('/api/init-db', { method: 'POST' })
-        // Fetch again after initialization
         const retryResponse = await fetch('/api/images')
         const retryData = await retryResponse.json()
         setImages(retryData.images.map(img => img.url))
       } else {
         setImages(data.images.map(img => img.url))
       }
-    } catch (error) {
-      console.error('Failed to fetch images:', error)
-      // Fallback to default images if API fails
+    } catch {
       setImages([
         'https://picsum.photos/id/10/400/300',
         'https://picsum.photos/id/11/400/300',
@@ -159,51 +198,53 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchImages()
+  }, [fetchImages])
 
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
 
+    const invalid = files.filter(f => !ALLOWED_TYPES.has(f.type))
+    if (invalid.length > 0) {
+      setError(`${invalid.length} file(s) have unsupported formats.`)
+      return
+    }
+
+    const oversized = files.filter(f => f.size > MAX_FILE_SIZE)
+    if (oversized.length > 0) {
+      setError(`${oversized.length} file(s) exceed the 10 MB limit.`)
+      return
+    }
+
     setUploading(true)
+    setError(null)
 
     try {
-      for (const file of files) {
-        // Convert file to base64
-        const reader = new FileReader()
-        const base64Promise = new Promise((resolve) => {
-          reader.onloadend = () => resolve(reader.result)
-          reader.readAsDataURL(file)
-        })
+      const results = await Promise.allSettled(files.map(uploadFile))
+      const urls = results
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value)
+      const failures = results.filter(r => r.status === 'rejected')
 
-        const base64 = await base64Promise
-
-        // Upload to API
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            image: base64,
-            filename: file.name,
-          }),
-        })
-
-        const data = await response.json()
-
-        if (data.success) {
-          // Add new image to state
-          setImages(prev => [...prev, data.url])
-        }
+      if (urls.length > 0) {
+        setImages(prev => [...prev, ...urls])
       }
-    } catch (error) {
-      console.error('Upload failed:', error)
-      alert('Failed to upload images. Please try again.')
+      if (failures.length > 0) {
+        setError(`${failures.length} file(s) failed to upload.`)
+      }
+    } catch {
+      setError('Upload failed. Please try again.')
     } finally {
       setUploading(false)
+      e.target.value = ''
     }
   }
+
+  const isDisabled = uploading || loading
 
   return (
     <>
@@ -213,32 +254,61 @@ function App() {
           <Badge>v1.0 RC</Badge>
           <Title>CRT Album</Title>
           <Description>
-            Experience your photos in a retro Windows XP environment. Upload your own images to view them on the virtual display.
+            Experience your photos in a retro Windows XP environment. Upload images to view them on the virtual display.
           </Description>
-          <UploadButton style={{ opacity: uploading ? 0.6 : 1, cursor: uploading ? 'wait' : 'pointer' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <UploadButton
+            style={{
+              opacity: isDisabled ? 0.6 : 1,
+              cursor: isDisabled ? 'wait' : 'pointer',
+            }}
+            aria-label="Upload images"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            {uploading ? 'Uploading...' : loading ? 'Loading...' : 'Upload Images'}
-            <HiddenInput type="file" multiple accept="image/*" onChange={handleUpload} disabled={uploading} />
+            {uploading ? 'Uploading…' : loading ? 'Loading…' : 'Upload Images'}
+            <HiddenInput
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+              onChange={handleUpload}
+              disabled={isDisabled}
+            />
           </UploadButton>
+          {error && <ErrorMessage role="alert">{error}</ErrorMessage>}
         </Card>
       </UIContainer>
 
       <Canvas
         shadows
         camera={{ position: [0, 0.5, 4], fov: 50 }}
-        style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1 }}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 1,
+        }}
         gl={{
           antialias: true,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.5
+          toneMapping: ACESFilmicToneMapping,
+          toneMappingExposure: 1.5,
         }}
-        onCreated={() => console.log('Canvas created!')}
       >
-        <Suspense fallback={<mesh><boxGeometry /><meshBasicMaterial color="red" /></mesh>}>
+        <Suspense fallback={null}>
           <Scene uploadedImages={images} />
         </Suspense>
       </Canvas>
