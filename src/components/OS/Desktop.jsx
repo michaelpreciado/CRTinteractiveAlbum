@@ -1,32 +1,63 @@
-import { Text, Image } from '@react-three/drei'
-import { useState, useEffect } from 'react'
+import { Text } from '@react-three/drei'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import FolderIcon from './FolderIcon'
 import Window from './Window'
 
-export default function Desktop({ cursorPos, clickTrigger, uploadedImages, scrollData }) {
+function getFormattedTime() {
+    return new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    })
+}
+
+const FOLDER_POS = { x: -2.5, y: 1.8 }
+const FOLDER_HIT_RADIUS = 0.5
+const SCREEN_WIDTH = 6.5
+const SCREEN_HEIGHT = 5
+
+export default function Desktop({ cursorPos, clickTrigger, uploadedImages }) {
     const [isWindowOpen, setWindowOpen] = useState(false)
+    const [time, setTime] = useState(getFormattedTime)
 
-    const screenWidth = 6.5
-    const screenHeight = 5
+    const cursorX = cursorPos.x * (SCREEN_WIDTH / 2)
+    const cursorY = cursorPos.y * (SCREEN_HEIGHT / 2)
 
-    const cursorX = cursorPos.x * (screenWidth / 2)
-    const cursorY = cursorPos.y * (screenHeight / 2)
+    // Refs keep current values readable inside the click effect without re-triggering it.
+    const cursorXRef = useRef(cursorX)
+    const cursorYRef = useRef(cursorY)
+    const isWindowOpenRef = useRef(isWindowOpen)
 
+    useEffect(() => { cursorXRef.current = cursorX }, [cursorX])
+    useEffect(() => { cursorYRef.current = cursorY }, [cursorY])
+    useEffect(() => { isWindowOpenRef.current = isWindowOpen }, [isWindowOpen])
+
+    // Live clock — updates once per minute.
+    useEffect(() => {
+        const interval = setInterval(() => setTime(getFormattedTime()), 60_000)
+        return () => clearInterval(interval)
+    }, [])
+
+    // Fires only on click events (clickTrigger changes).
     useEffect(() => {
         if (clickTrigger === 0) return
-        if (isWindowOpen) return // Prevent re-opening
+        if (isWindowOpenRef.current) return
 
-        const folderPos = { x: -2.5, y: 1.8 }
-        const dist = Math.sqrt(Math.pow(cursorX - folderPos.x, 2) + Math.pow(cursorY - folderPos.y, 2))
-
-        if (dist < 0.5) {
+        const dx = cursorXRef.current - FOLDER_POS.x
+        const dy = cursorYRef.current - FOLDER_POS.y
+        if (Math.sqrt(dx * dx + dy * dy) < FOLDER_HIT_RADIUS) {
             setWindowOpen(true)
         }
-    }, [clickTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [clickTrigger])
+
+    const handleClose = useCallback(() => setWindowOpen(false), [])
+
+    const folderHighlighted =
+        Math.abs(cursorX - FOLDER_POS.x) < 0.4 && Math.abs(cursorY - FOLDER_POS.y) < 0.4
 
     return (
         <group>
-            {/* Bliss Wallpaper Background */}
+            {/* Sky */}
             <mesh position={[0, 0, -1]}>
                 <planeGeometry args={[10, 8]} />
                 <meshBasicMaterial color="#5c9ee8" />
@@ -54,52 +85,43 @@ export default function Desktop({ cursorPos, clickTrigger, uploadedImages, scrol
                 </mesh>
             </group>
 
-            {/* Gradient Sky Effect */}
+            {/* Sky gradient */}
             <mesh position={[0, 2, -0.93]}>
                 <planeGeometry args={[10, 4]} />
-                <meshBasicMaterial
-                    color="#87ceeb"
-                    transparent
-                    opacity={0.4}
-                />
+                <meshBasicMaterial color="#87ceeb" transparent opacity={0.4} />
             </mesh>
 
-            {/* Green Hills Bottom - Layered for depth */}
+            {/* Green hills */}
             <mesh position={[0, -2.5, -0.92]}>
                 <planeGeometry args={[12, 5]} />
                 <meshBasicMaterial color="#7ec850" />
             </mesh>
-
             <mesh position={[-3, -2, -0.91]} rotation={[0, 0, 0.2]}>
                 <planeGeometry args={[8, 4]} />
                 <meshBasicMaterial color="#76bc4b" />
             </mesh>
-
             <mesh position={[3, -2.2, -0.91]} rotation={[0, 0, -0.1]}>
                 <planeGeometry args={[8, 4]} />
                 <meshBasicMaterial color="#85d155" />
             </mesh>
 
-            {/* Desktop Icons */}
             <FolderIcon
-                position={[-2.5, 1.8, 0]}
+                position={[FOLDER_POS.x, FOLDER_POS.y, 0]}
                 label="My Pictures"
-                highlighted={Math.abs(cursorX - (-2.5)) < 0.4 && Math.abs(cursorY - 1.8) < 0.4}
+                highlighted={folderHighlighted}
             />
 
-            {/* Windows */}
             {isWindowOpen && (
                 <Window
-                    onClose={() => setWindowOpen(false)}
+                    onClose={handleClose}
                     cursorX={cursorX}
                     cursorY={cursorY}
                     clickTrigger={clickTrigger}
                     images={uploadedImages}
-                    scrollData={scrollData}
                 />
             )}
 
-            {/* Cursor - Windows XP Arrow */}
+            {/* Cursor */}
             <group position={[cursorX, cursorY, 2]}>
                 <mesh rotation={[0, 0, Math.PI / 4]}>
                     <coneGeometry args={[0.08, 0.25, 3]} />
@@ -117,18 +139,12 @@ export default function Desktop({ cursorPos, clickTrigger, uploadedImages, scrol
                 <meshBasicMaterial color="#245edb" />
             </mesh>
 
-            {/* Start Button */}
+            {/* Start button */}
             <mesh position={[-4.5, -2.3, 0.11]}>
                 <planeGeometry args={[0.8, 0.3]} />
                 <meshBasicMaterial color="#3d8c3d" />
             </mesh>
-
-            <Text
-                position={[-4.5, -2.3, 0.12]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-            >
+            <Text position={[-4.5, -2.3, 0.12]} fontSize={0.15} color="white" anchorX="center">
                 Start
             </Text>
 
@@ -137,13 +153,8 @@ export default function Desktop({ cursorPos, clickTrigger, uploadedImages, scrol
                 <planeGeometry args={[0.8, 0.3]} />
                 <meshBasicMaterial color="#184ba5" />
             </mesh>
-            <Text
-                position={[4.5, -2.3, 0.12]}
-                fontSize={0.12}
-                color="white"
-                anchorX="center"
-            >
-                12:00 PM
+            <Text position={[4.5, -2.3, 0.12]} fontSize={0.12} color="white" anchorX="center">
+                {time}
             </Text>
         </group>
     )

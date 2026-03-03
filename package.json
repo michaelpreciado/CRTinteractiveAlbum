@@ -13,24 +13,19 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
-    "@react-three/postprocessing": "^3.0.4",
-    "@types/three": "^0.181.0",
     "@vercel/blob": "^2.0.0",
     "@vercel/postgres": "^0.10.0",
-    "framer-motion": "^12.23.24",
-    "leva": "^0.10.1",
     "postprocessing": "^6.38.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-postprocessing": "^1.4.0",
     "styled-components": "^6.1.19",
-    "three": "^0.181.1",
-    "uuid": "^13.0.0"
+    "three": "^0.181.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@types/three": "^0.181.0",
     "@vitejs/plugin-react": "^5.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
