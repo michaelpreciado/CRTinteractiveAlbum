@@ -1,180 +1,234 @@
 import { Text, Image } from '@react-three/drei'
 import { useState, useEffect, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { useAppStore } from '../../store/useAppStore'
+import { SCREEN_WIDTH, SCREEN_HEIGHT, OS_FONT } from './constants'
 
 const CLOSE_BTN = { x: 2.2, y: 1.5 }
 const CLOSE_HIT_RADIUS = 0.2
 const GRID_COLS = 3
 const CELL_W = 1.5
 const CELL_H = 1.2
+const MAX_VISIBLE = 6
 
-export default function Window({ onClose, cursorX, cursorY, clickTrigger, images }) {
-    const [selectedImage, setSelectedImage] = useState(null)
+function cellPosition(i) {
+  const row = Math.floor(i / GRID_COLS)
+  const col = i % GRID_COLS
+  return { x: -1.5 + col * CELL_W, y: 0.6 - row * CELL_H }
+}
 
-    // Refs keep current values readable in the click effect without re-triggering it.
-    const cursorXRef = useRef(cursorX)
-    const cursorYRef = useRef(cursorY)
-    const selectedImageRef = useRef(selectedImage)
-    const imagesRef = useRef(images)
-    const onCloseRef = useRef(onClose)
+export default function Window({ clickTrigger, images }) {
+  const selectedImage = useAppStore((s) => s.selectedImage)
+  const [hovered, setHovered] = useState(-1) // -2 = close button
 
-    useEffect(() => { cursorXRef.current = cursorX }, [cursorX])
-    useEffect(() => { cursorYRef.current = cursorY }, [cursorY])
-    useEffect(() => { selectedImageRef.current = selectedImage }, [selectedImage])
-    useEffect(() => { imagesRef.current = images }, [images])
-    useEffect(() => { onCloseRef.current = onClose }, [onClose])
+  const groupRef = useRef()
+  const hoveredRef = useRef(-1)
+  const imagesRef = useRef(images)
+  useEffect(() => { imagesRef.current = images }, [images])
 
-    // Fires only on click events (clickTrigger changes).
-    useEffect(() => {
-        if (clickTrigger === 0) return
+  const visibleImages = images ? images.slice(0, MAX_VISIBLE) : []
+  const hiddenCount = images ? images.length - visibleImages.length : 0
 
-        if (selectedImageRef.current) {
-            setSelectedImage(null)
-            return
+  // Pop-open animation + hover tracking, all inside the frame loop.
+  useFrame((_, delta) => {
+    if (groupRef.current) {
+      const s = groupRef.current.scale
+      s.x = s.y = s.z = Math.min(1, s.x + (1 - s.x) * Math.min(1, delta * 14) + delta * 0.5)
+    }
+
+    const { cursor, viewMode } = useAppStore.getState()
+    let next = -1
+    if (viewMode === 'gallery') {
+      const cx = cursor.x * (SCREEN_WIDTH / 2)
+      const cy = cursor.y * (SCREEN_HEIGHT / 2)
+      const dx = cx - CLOSE_BTN.x
+      const dy = cy - CLOSE_BTN.y
+      if (Math.sqrt(dx * dx + dy * dy) < CLOSE_HIT_RADIUS + 0.05) {
+        next = -2
+      } else {
+        const imgs = imagesRef.current || []
+        for (let i = 0; i < Math.min(imgs.length, MAX_VISIBLE); i++) {
+          const p = cellPosition(i)
+          if (Math.abs(cx - p.x) < 0.65 && Math.abs(cy - p.y) < 0.52) {
+            next = i
+            break
+          }
         }
+      }
+    }
+    if (next !== hoveredRef.current) {
+      hoveredRef.current = next
+      setHovered(next)
+    }
+  })
 
-        const cx = cursorXRef.current
-        const cy = cursorYRef.current
+  // Fires only on click events (clickTrigger changes).
+  useEffect(() => {
+    if (clickTrigger === 0) return
+    const { viewMode, cursor, closeGallery, closePhoto, selectPhoto } =
+      useAppStore.getState()
 
-        // Close button hit test
-        const dx = cx - CLOSE_BTN.x
-        const dy = cy - CLOSE_BTN.y
-        if (Math.sqrt(dx * dx + dy * dy) < CLOSE_HIT_RADIUS) {
-            onCloseRef.current()
-            return
-        }
+    if (viewMode === 'photo') {
+      closePhoto()
+      return
+    }
+    if (viewMode !== 'gallery') return
 
-        // Image grid hit test
-        const imgs = imagesRef.current
-        if (!imgs) return
-        for (let i = 0; i < imgs.length; i++) {
-            const row = Math.floor(i / GRID_COLS)
-            const col = i % GRID_COLS
-            const x = -1.5 + col * CELL_W
-            const y = 0.6 - row * CELL_H
+    const cx = cursor.x * (SCREEN_WIDTH / 2)
+    const cy = cursor.y * (SCREEN_HEIGHT / 2)
 
-            if (Math.abs(cx - x) < 0.6 && Math.abs(cy - y) < 0.5) {
-                setSelectedImage(imgs[i])
-                break
-            }
-        }
-    }, [clickTrigger])
+    const dx = cx - CLOSE_BTN.x
+    const dy = cy - CLOSE_BTN.y
+    if (Math.sqrt(dx * dx + dy * dy) < CLOSE_HIT_RADIUS) {
+      closeGallery()
+      return
+    }
 
-    return (
-        <group position={[0, 0, 0.5]}>
-            {/* Drop shadow */}
-            <mesh position={[0.05, -0.05, -0.05]}>
-                <planeGeometry args={[5.1, 3.6]} />
-                <meshBasicMaterial color="#000000" transparent opacity={0.3} />
-            </mesh>
+    const imgs = imagesRef.current || []
+    for (let i = 0; i < Math.min(imgs.length, MAX_VISIBLE); i++) {
+      const p = cellPosition(i)
+      if (Math.abs(cx - p.x) < 0.6 && Math.abs(cy - p.y) < 0.5) {
+        selectPhoto(imgs[i])
+        break
+      }
+    }
+  }, [clickTrigger])
 
-            {/* Border */}
-            <mesh position={[0, 0, 0.02]}>
-                <planeGeometry args={[5.05, 3.55]} />
-                <meshBasicMaterial color="#0054e3" />
-            </mesh>
+  return (
+    <>
+      <group ref={groupRef} position={[0, 0, 0.5]} scale={0.85}>
+        {/* Drop shadow */}
+        <mesh position={[0.06, -0.08, -0.05]}>
+          <planeGeometry args={[5.1, 3.6]} />
+          <meshBasicMaterial color="#000000" transparent opacity={0.35} />
+        </mesh>
 
-            {/* Body */}
-            <mesh position={[0, 0, 0]}>
-                <planeGeometry args={[5, 3.5]} />
-                <meshBasicMaterial color="#ece9d8" />
-            </mesh>
+        {/* Border */}
+        <mesh position={[0, 0, 0.02]}>
+          <planeGeometry args={[5.05, 3.55]} />
+          <meshBasicMaterial color="#0054e3" />
+        </mesh>
 
-            {/* Title bar */}
-            <mesh position={[0, 1.6, 0.04]}>
-                <planeGeometry args={[4.9, 0.3]} />
-                <meshBasicMaterial color="#0054e3" />
-            </mesh>
-            <mesh position={[0, 1.6, 0.041]}>
-                <planeGeometry args={[4.9, 0.3]} />
-                <meshBasicMaterial color="#4e98f7" transparent opacity={0.5} />
-            </mesh>
-            <Text
-                position={[-2.2, 1.6, 0.06]}
-                fontSize={0.18}
-                color="white"
-                anchorX="left"
-                anchorY="middle"
-            >
-                My Pictures
-            </Text>
+        {/* Body */}
+        <mesh position={[0, 0, 0.03]}>
+          <planeGeometry args={[5, 3.5]} />
+          <meshBasicMaterial color="#ece9d8" />
+        </mesh>
 
-            {/* Window controls */}
-            <mesh position={[1.8, 1.6, 0.06]}>
-                <planeGeometry args={[0.2, 0.2]} />
-                <meshBasicMaterial color="#3d8edb" />
-            </mesh>
-            <mesh position={[2.0, 1.6, 0.06]}>
-                <planeGeometry args={[0.2, 0.2]} />
-                <meshBasicMaterial color="#3d8edb" />
-            </mesh>
-            <mesh position={[CLOSE_BTN.x, 1.6, 0.06]}>
-                <planeGeometry args={[0.2, 0.2]} />
-                <meshBasicMaterial color="#e81123" />
-            </mesh>
-            <Text
-                position={[CLOSE_BTN.x, 1.6, 0.07]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-            >
-                ×
-            </Text>
+        {/* Title bar */}
+        <mesh position={[0, 1.6, 0.04]}>
+          <planeGeometry args={[4.9, 0.3]} />
+          <meshBasicMaterial color="#0054e3" />
+        </mesh>
+        <mesh position={[0, 1.68, 0.041]}>
+          <planeGeometry args={[4.9, 0.12]} />
+          <meshBasicMaterial color="#4e98f7" transparent opacity={0.6} />
+        </mesh>
+        <Text
+        font={OS_FONT}
+          position={[-2.35, 1.6, 0.06]}
+          fontSize={0.17}
+          color="white"
+          anchorX="left"
+          anchorY="middle"
+        >
+          My Pictures
+        </Text>
 
-            {/* Content area */}
-            <mesh position={[0, -0.15, 0.04]}>
-                <planeGeometry args={[4.8, 3]} />
-                <meshBasicMaterial color="white" />
-            </mesh>
+        {/* Window controls */}
+        <mesh position={[1.8, 1.6, 0.06]}>
+          <planeGeometry args={[0.2, 0.2]} />
+          <meshBasicMaterial color="#3d8edb" />
+        </mesh>
+        <mesh position={[2.0, 1.6, 0.06]}>
+          <planeGeometry args={[0.2, 0.2]} />
+          <meshBasicMaterial color="#3d8edb" />
+        </mesh>
+        <mesh position={[CLOSE_BTN.x, 1.6, 0.06]}>
+          <planeGeometry args={[0.2, 0.2]} />
+          <meshBasicMaterial color={hovered === -2 ? '#ff4d5e' : '#e81123'} />
+        </mesh>
+        <Text
+        font={OS_FONT}
+          position={[CLOSE_BTN.x, 1.6, 0.07]}
+          fontSize={0.15}
+          color="white"
+          anchorX="center"
+          anchorY="middle"
+        >
+          ×
+        </Text>
 
-            {/* Gallery grid */}
-            <group position={[0, 0, 0.1]}>
-                {images && images.map((img, i) => {
-                    const row = Math.floor(i / GRID_COLS)
-                    const col = i % GRID_COLS
-                    const x = -1.5 + col * CELL_W
-                    const y = 0.6 - row * CELL_H
+        {/* Content area */}
+        <mesh position={[0, -0.15, 0.04]}>
+          <planeGeometry args={[4.8, 3]} />
+          <meshBasicMaterial color="white" />
+        </mesh>
 
-                    return (
-                        <group key={img} position={[x, y, 0]}>
-                            <Image url={img} scale={[1.2, 0.9]} />
-                            <Text
-                                position={[0, -0.6, 0]}
-                                fontSize={0.12}
-                                color="black"
-                                anchorX="center"
-                            >
-                                Image {i + 1}
-                            </Text>
-                        </group>
-                    )
-                })}
-
-                {(!images || images.length === 0) && (
-                    <Text position={[0, 0, 0]} color="#666" fontSize={0.2} anchorX="center">
-                        No images uploaded
-                    </Text>
+        {/* Gallery grid */}
+        <group position={[0, 0, 0.1]}>
+          {visibleImages.map((img, i) => {
+            const p = cellPosition(i)
+            const isHovered = hovered === i
+            return (
+              <group key={`${img}-${i}`} position={[p.x, p.y, 0]}>
+                {isHovered && (
+                  <mesh position={[0, -0.03, -0.01]}>
+                    <planeGeometry args={[1.36, 1.12]} />
+                    <meshBasicMaterial color="#316ac5" transparent opacity={0.35} />
+                  </mesh>
                 )}
-            </group>
+                <Image url={img} scale={isHovered ? [1.26, 0.945] : [1.2, 0.9]} />
+                <Text
+        font={OS_FONT}
+                  position={[0, -0.58, 0]}
+                  fontSize={0.11}
+                  color={isHovered ? '#0054e3' : 'black'}
+                  anchorX="center"
+                >
+                  Image {i + 1}
+                </Text>
+              </group>
+            )
+          })}
 
-            {/* Fullscreen view */}
-            {selectedImage && (
-                <group position={[0, -0.15, 0.3]}>
-                    <mesh>
-                        <planeGeometry args={[4.8, 3]} />
-                        <meshBasicMaterial color="black" />
-                    </mesh>
-                    <Image url={selectedImage} scale={[4, 2.5]} position={[0, 0, 0.05]} />
-                    <Text
-                        position={[0, -1.3, 0.1]}
-                        fontSize={0.15}
-                        color="white"
-                        anchorX="center"
-                    >
-                        Click to close
-                    </Text>
-                </group>
-            )}
+          {hiddenCount > 0 && (
+            <Text font={OS_FONT} position={[0, -1.35, 0]} fontSize={0.11} color="#666" anchorX="center">
+              +{hiddenCount} more image{hiddenCount > 1 ? 's' : ''}
+            </Text>
+          )}
+
+          {visibleImages.length === 0 && (
+            <Text font={OS_FONT} position={[0, 0, 0]} color="#666" fontSize={0.2} anchorX="center">
+              No images uploaded
+            </Text>
+          )}
         </group>
-    )
+      </group>
+
+      {/* Fullscreen photo view — fills the whole CRT screen */}
+      {selectedImage && (
+        <group position={[0, 0, 1.5]}>
+          <mesh>
+            <planeGeometry args={[SCREEN_WIDTH + 0.6, SCREEN_HEIGHT + 0.6]} />
+            <meshBasicMaterial color="#050505" />
+          </mesh>
+          <Image
+            url={selectedImage}
+            scale={[SCREEN_WIDTH * 0.92, SCREEN_HEIGHT * 0.82]}
+            position={[0, 0.15, 0.05]}
+          />
+          <Text
+        font={OS_FONT}
+            position={[0, -2.0, 0.1]}
+            fontSize={0.15}
+            color="#9ab8ff"
+            anchorX="center"
+          >
+            Click screen to go back · Save button exports this photo
+          </Text>
+        </group>
+      )}
+    </>
+  )
 }

@@ -1,14 +1,17 @@
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { ACESFilmicToneMapping } from 'three'
-import Scene from './components/Scene'
-import { Loader } from '@react-three/drei'
+import { Loader, PerformanceMonitor } from '@react-three/drei'
 import styled, { createGlobalStyle } from 'styled-components'
+import Scene from './components/Scene'
+import { useAppStore } from './store/useAppStore'
+import { exportCRTImage } from './utils/exportCRTImage'
 
 const GlobalStyle = createGlobalStyle`
   body {
     font-family: 'Inter', sans-serif;
     background: #050505;
+    overscroll-behavior: none;
   }
 `
 
@@ -133,6 +136,81 @@ const ErrorMessage = styled.div`
   line-height: 1.4;
 `
 
+const SaveBar = styled.div`
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(15, 15, 15, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  animation: rise 0.35s ease;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+`
+
+const SaveButton = styled.button`
+  background: linear-gradient(180deg, #4ade80, #22c55e);
+  color: #052e12;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 9px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+
+  &:hover:not(:disabled) {
+    transform: scale(1.03);
+    filter: brightness(1.05);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+`
+
+const BackButton = styled.button`
+  background: rgba(255, 255, 255, 0.08);
+  color: #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 10px 16px;
+  border-radius: 9px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+`
+
+const SaveHint = styled.span`
+  font-size: 12px;
+  color: #9a9a9a;
+  padding-left: 4px;
+`
+
 const ALLOWED_TYPES = new Set([
   'image/jpeg', 'image/jpg', 'image/png',
   'image/gif', 'image/webp', 'image/avif',
@@ -163,10 +241,18 @@ async function uploadFile(file) {
 }
 
 function App() {
-  const [images, setImages] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
+  const [dpr, setDpr] = useState(1.5)
+
+  const images = useAppStore((s) => s.images)
+  const setImages = useAppStore((s) => s.setImages)
+  const addImages = useAppStore((s) => s.addImages)
+  const selectedImage = useAppStore((s) => s.selectedImage)
+  const closePhoto = useAppStore((s) => s.closePhoto)
+  const saving = useAppStore((s) => s.saving)
+  const setSaving = useAppStore((s) => s.setSaving)
 
   useEffect(() => {
     if (!error) return
@@ -198,7 +284,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setImages])
 
   useEffect(() => {
     fetchImages()
@@ -231,7 +317,15 @@ function App() {
       const failures = results.filter(r => r.status === 'rejected')
 
       if (urls.length > 0) {
-        setImages(prev => [...prev, ...urls])
+        addImages(urls)
+      } else if (failures.length > 0) {
+        // Fall back to local object URLs so the experience still works
+        // without the upload API (e.g. running the static site alone).
+        addImages(files.map(f => URL.createObjectURL(f)))
+        setError('Upload API unavailable — showing images locally.')
+        setUploading(false)
+        e.target.value = ''
+        return
       }
       if (failures.length > 0) {
         setError(`${failures.length} file(s) failed to upload.`)
@@ -244,6 +338,18 @@ function App() {
     }
   }
 
+  const handleSave = async () => {
+    if (!selectedImage || saving) return
+    setSaving(true)
+    try {
+      await exportCRTImage(selectedImage, `crt-photo-${Date.now()}.png`)
+    } catch {
+      setError('Could not export this image (it may block cross-origin access).')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const isDisabled = uploading || loading
 
   return (
@@ -251,10 +357,12 @@ function App() {
       <GlobalStyle />
       <UIContainer>
         <Card>
-          <Badge>v1.0 RC</Badge>
+          <Badge>v1.0</Badge>
           <Title>CRT Album</Title>
           <Description>
-            Experience your photos in a retro Windows XP environment. Upload images to view them on the virtual display.
+            Upload your photos and view them on a retro CRT. Drag the cursor on
+            the screen, click the folder to browse, click a photo to zoom in —
+            then save it with the CRT effect baked in.
           </Description>
           <UploadButton
             style={{
@@ -291,8 +399,19 @@ function App() {
         </Card>
       </UIContainer>
 
+      {selectedImage && (
+        <SaveBar>
+          <BackButton onClick={closePhoto}>← Back</BackButton>
+          <SaveButton onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : '💾 Save with CRT effect'}
+          </SaveButton>
+          <SaveHint>Exports a PNG with the CRT look applied</SaveHint>
+        </SaveBar>
+      )}
+
       <Canvas
         shadows
+        dpr={dpr}
         camera={{ position: [0, 0.5, 4], fov: 50 }}
         style={{
           position: 'fixed',
@@ -304,13 +423,21 @@ function App() {
         }}
         gl={{
           antialias: true,
+          powerPreference: 'high-performance',
           toneMapping: ACESFilmicToneMapping,
-          toneMappingExposure: 1.5,
+          toneMappingExposure: 1.4,
+          stencil: false,
         }}
       >
-        <Suspense fallback={null}>
-          <Scene uploadedImages={images} />
-        </Suspense>
+        {/* Adaptive resolution: back off DPR under load, restore when smooth */}
+        <PerformanceMonitor
+          onIncline={() => setDpr(Math.min(2, window.devicePixelRatio))}
+          onDecline={() => setDpr(1)}
+        >
+          <Suspense fallback={null}>
+            <Scene uploadedImages={images} />
+          </Suspense>
+        </PerformanceMonitor>
       </Canvas>
       <Loader
         containerStyles={{ background: '#050505' }}
