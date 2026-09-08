@@ -26,8 +26,8 @@ A stunning 3D interactive photo album featuring a retro CRT monitor in a beautif
 1. **Clone the repository**
 
    ```bash
-   git clone <your-repo-url>
-   cd CRTinteractiveAlbum
+   git clone https://github.com/michaelpreciado/CRT-Photo-Album.git
+   cd CRT-Photo-Album
    ```
 
 2. **Install dependencies**
@@ -59,16 +59,15 @@ vercel link
 # Pull environment variables
 vercel env pull .env.local
 
-# Run dev server
-npm run dev
+# Run the frontend and serverless API routes
+npm run vercel-dev
 ```
 
 ## 📦 Tech Stack
 
 - **Frontend**: React 19, Three.js, React Three Fiber
-- **3D Graphics**: @react-three/fiber, @react-three/drei, @react-three/postprocessing
+- **3D Graphics**: @react-three/fiber, @react-three/drei, postprocessing
 - **Styling**: Styled Components
-- **Animation**: Framer Motion
 - **Database**: Vercel Postgres
 - **Storage**: Vercel Blob
 - **Build Tool**: Vite
@@ -95,22 +94,18 @@ Deploy to Vercel with database support in minutes!
 
 **Quick Deploy:**
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=<your-repo-url>)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/michaelpreciado/CRT-Photo-Album.git)
 
 **Manual Deployment:**
 
-See the comprehensive [DEPLOYMENT.md](./DEPLOYMENT.md) guide for detailed instructions on:
+Import this repository into Vercel with the Vite framework preset. The build command is `npm run build` and the output directory is `dist`.
 
-- Setting up Vercel Postgres
-- Configuring Vercel Blob storage
-- Environment variables
-- Custom domains
-- Troubleshooting
+Configure the variables listed in [`.env.example`](.env.example) for the database and image storage. API routes live in `api/`; `npm run dev` serves only the Vite frontend, while `npm run vercel-dev` also runs the serverless routes locally.
 
 ## 📁 Project Structure
 
 ```
-CRTinteractiveAlbum/
+CRT-Photo-Album/
 ├── api/                    # Serverless API routes
 │   ├── upload.js          # Image upload endpoint
 │   ├── images.js          # Fetch images endpoint
@@ -124,8 +119,7 @@ CRTinteractiveAlbum/
 │   └── main.jsx           # Entry point
 ├── public/                # Static assets
 ├── vercel.json            # Vercel configuration
-├── .env.example           # Environment variables template
-└── DEPLOYMENT.md          # Deployment guide
+└── .env.example           # Environment variables template
 ```
 
 ## 🎮 Usage
